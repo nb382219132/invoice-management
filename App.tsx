@@ -1,4 +1,24 @@
 import React, { useState, useEffect } from 'react';
+import {
+  fetchStores,
+  fetchSuppliers,
+  fetchInvoices,
+  fetchPayments,
+  fetchQuarterData,
+  fetchAvailableQuarters,
+  fetchCurrentQuarter,
+  fetchFactoryOwners,
+  saveStores,
+  saveSuppliers,
+  saveInvoices,
+  savePayments,
+  saveQuarterData,
+  saveAvailableQuarters,
+  saveCurrentQuarter,
+  saveFactoryOwners,
+  migrateDataFromLocalStorage,
+  hasDataInSupabase
+} from './services/supabaseService';
 import { 
   LayoutDashboard, 
   Store, 
@@ -68,19 +88,11 @@ function App() {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isLoading, setIsLoading] = useState(true);
   
-  // 清空localStorage中的数据，确保使用空的MOCK数据
-  useEffect(() => {
-    localStorage.removeItem('stores');
-    localStorage.removeItem('suppliers');
-    localStorage.removeItem('invoices');
-    localStorage.removeItem('payments');
-  }, []);
-  
-  // Data State with localStorage persistence
-  const [stores, setStores] = useState<StoreCompany[]>(MOCK_STORES);
-  const [suppliers, setSuppliers] = useState<SupplierEntity[]>(MOCK_SUPPLIERS);
-  const [invoices, setInvoices] = useState<InvoiceRecord[]>(MOCK_INVOICES);
-  const [payments, setPayments] = useState<PaymentRecord[]>(MOCK_PAYMENTS);
+  // Data State with Supabase persistence
+  const [stores, setStores] = useState<StoreCompany[]>([]);
+  const [suppliers, setSuppliers] = useState<SupplierEntity[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
 
   // UI State
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -91,25 +103,15 @@ function App() {
     shipping: '', promotion: '', salaries: '', rent: '', office: '', fuel: '', other: ''
   });
   
-
-
-  // Quarter Management State with localStorage persistence
-  const [currentQuarter, setCurrentQuarter] = useState<string>(() => {
-    return localStorage.getItem('currentQuarter') || '2025Q3';
-  });
-  const [availableQuarters, setAvailableQuarters] = useState<string[]>(() => {
-    const saved = localStorage.getItem('availableQuarters');
-    return saved ? JSON.parse(saved) : ['2025Q3'];
-  });
+  // Quarter Management State with Supabase persistence
+  const [currentQuarter, setCurrentQuarter] = useState<string>('2025Q3');
+  const [availableQuarters, setAvailableQuarters] = useState<string[]>(['2025Q3']);
   const [quarterData, setQuarterData] = useState<Record<string, {
     stores: StoreCompany[];
     suppliers: SupplierEntity[];
     invoices: InvoiceRecord[];
     payments: PaymentRecord[];
-  }>>(() => {
-    const saved = localStorage.getItem('quarterData');
-    return saved ? JSON.parse(saved) : {};
-  });
+  }>>({});
   
   // --- Form States for Add/Edit ---
   const [storeForm, setStoreForm] = useState({ id: '', companyName: '', storeName: '', income: '', expenses: '', taxType: StoreTaxType.GENERAL });
@@ -141,13 +143,7 @@ function App() {
   const [paymentPageSize, setPaymentPageSize] = useState<number>(20);
 
   // Factory owners list - to track factories independently from entities
-  const [factoryOwners, setFactoryOwners] = useState<string[]>(() => {
-    const saved = localStorage.getItem('factoryOwners');
-    if (saved) return JSON.parse(saved);
-    // Initialize from existing suppliers if no saved data
-    const owners = Array.from(new Set(suppliers.map(s => s.owner)));
-    return owners.length > 0 ? owners : ['雷震', '陈晨']; // Default factories
-  });
+  const [factoryOwners, setFactoryOwners] = useState<string[]>([]);
 
   // Backup data state for import/export functionality
   const [backupData, setBackupData] = useState<any>({
@@ -164,10 +160,95 @@ function App() {
     }
   });
 
-  // 数据加载完成后的处理
+  // 从Supabase加载数据
   useEffect(() => {
-    setIsLoading(false);
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // 检查Supabase是否已有数据
+        const hasData = await hasDataInSupabase();
+        
+        if (!hasData) {
+          // 如果没有数据，从localStorage迁移
+          await migrateDataFromLocalStorage();
+        }
+        
+        // 从Supabase加载所有数据
+        const [
+          storesData,
+          suppliersData,
+          invoicesData,
+          paymentsData,
+          quarterDataData,
+          availableQuartersData,
+          currentQuarterData,
+          factoryOwnersData
+        ] = await Promise.all([
+          fetchStores(),
+          fetchSuppliers(),
+          fetchInvoices(),
+          fetchPayments(),
+          fetchQuarterData(),
+          fetchAvailableQuarters(),
+          fetchCurrentQuarter(),
+          fetchFactoryOwners()
+        ]);
+        
+        // 更新状态
+        setStores(storesData);
+        setSuppliers(suppliersData);
+        setInvoices(invoicesData);
+        setPayments(paymentsData);
+        setQuarterData(quarterDataData);
+        setAvailableQuarters(availableQuartersData);
+        setCurrentQuarter(currentQuarterData);
+        setFactoryOwners(factoryOwnersData);
+        
+        // 只有当所有核心表都没有数据时，才使用默认值
+        if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
+          setStores(MOCK_STORES);
+          setSuppliers(MOCK_SUPPLIERS);
+          setInvoices(MOCK_INVOICES);
+          setPayments(MOCK_PAYMENTS);
+        }
+      } catch (error) {
+        console.error('加载数据失败:', error);
+        // 加载失败时使用默认数据
+        setStores(MOCK_STORES);
+        setSuppliers(MOCK_SUPPLIERS);
+        setInvoices(MOCK_INVOICES);
+        setPayments(MOCK_PAYMENTS);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
   }, []);
+  
+  // 保存数据到Supabase
+  const saveAllData = async () => {
+    try {
+      await Promise.all([
+        saveStores(stores),
+        saveSuppliers(suppliers),
+        saveInvoices(invoices),
+        savePayments(payments),
+        saveQuarterData(quarterData),
+        saveAvailableQuarters(availableQuarters),
+        saveCurrentQuarter(currentQuarter),
+        saveFactoryOwners(factoryOwners)
+      ]);
+    } catch (error) {
+      console.error('保存数据失败:', error);
+    }
+  };
+  
+  // 当数据变化时自动保存
+  useEffect(() => {
+    saveAllData();
+  }, [stores, suppliers, invoices, payments, quarterData, availableQuarters, currentQuarter, factoryOwners]);
 
   // 动态调整浮窗位置
   useEffect(() => {
@@ -411,23 +492,47 @@ function App() {
         
         if (backupData.version && backupData.data) {
           if (confirm(`确认恢复备份数据？\n\n备份时间：${backupData.timestamp}\n备份包含：所有季度数据\n\n注意：这将覆盖当前所有数据，包括所有季度的历史数据！`)) {
-            setStores(backupData.data.stores || []);
-            setSuppliers(backupData.data.suppliers || []);
-            setInvoices(backupData.data.invoices || []);
-            setPayments(backupData.data.payments || []);
-            setQuarterData(backupData.data.quarterData || {});
+            // 1. 保存备份时的季度
+            const backupQuarter = backupData.quarter || currentQuarter;
+            
+            // 2. 获取备份数据中的季度数据
+            const backupQuarterData = backupData.data.quarterData || {};
+            
+            // 3. 确定要加载的数据
+            let targetStores = backupData.data.stores || [];
+            let targetSuppliers = backupData.data.suppliers || [];
+            let targetInvoices = backupData.data.invoices || [];
+            let targetPayments = backupData.data.payments || [];
+            
+            // 4. 如果备份数据中有该季度的数据，使用该季度的数据
+            if (backupQuarterData[backupQuarter]) {
+              targetStores = backupQuarterData[backupQuarter].stores || [];
+              targetSuppliers = backupQuarterData[backupQuarter].suppliers || [];
+              targetInvoices = backupQuarterData[backupQuarter].invoices || [];
+              targetPayments = backupQuarterData[backupQuarter].payments || [];
+            }
+            
+            // 5. 直接设置所有数据，包括季度数据和当前季度的数据
+            setQuarterData(backupQuarterData);
             setAvailableQuarters(backupData.data.availableQuarters || []);
-            setCurrentQuarter(backupData.quarter || currentQuarter);
+            setStores(targetStores);
+            setSuppliers(targetSuppliers);
+            setInvoices(targetInvoices);
+            setPayments(targetPayments);
             
-            // 保存到localStorage
-            localStorage.setItem('stores', JSON.stringify(backupData.data.stores || []));
-            localStorage.setItem('suppliers', JSON.stringify(backupData.data.suppliers || []));
-            localStorage.setItem('invoices', JSON.stringify(backupData.data.invoices || []));
-            localStorage.setItem('payments', JSON.stringify(backupData.data.payments || []));
-            localStorage.setItem('quarterData', JSON.stringify(backupData.data.quarterData || {}));
-            localStorage.setItem('availableQuarters', JSON.stringify(backupData.data.availableQuarters || []));
-            localStorage.setItem('currentQuarter', backupData.quarter || currentQuarter);
+            // 6. 恢复工厂所有者列表
+            if (backupData.data.factoryOwners) {
+              setFactoryOwners(backupData.data.factoryOwners);
+            } else {
+              // 如果备份数据中没有factoryOwners，从suppliers中提取唯一的owner
+              const uniqueOwners = Array.from(new Set(targetSuppliers.map(s => s.owner)));
+              setFactoryOwners(uniqueOwners);
+            }
             
+            // 7. 切换到备份时的季度
+            setCurrentQuarter(backupQuarter);
+            
+            // 6. 显示成功提示
             alert('数据恢复成功！');
           }
         } else {
@@ -622,14 +727,12 @@ function App() {
       updatedStores = [...stores, s];
     }
     setStores(updatedStores);
-    localStorage.setItem('stores', JSON.stringify(updatedStores));
     setActiveModal(null);
   };
 
   const handleDeleteStore = (storeId: string) => {
     const updatedStores = stores.filter(s => s.id !== storeId);
     setStores(updatedStores);
-    localStorage.setItem('stores', JSON.stringify(updatedStores));
     // Optional: Clean up orphaned invoices/payments?
     // For now we keep them or filter them out in display if needed.
   };
@@ -691,11 +794,9 @@ function App() {
       if (!factoryOwners.includes(supplierForm.owner)) {
         const updatedFactoryOwners = [...factoryOwners, supplierForm.owner];
         setFactoryOwners(updatedFactoryOwners);
-        localStorage.setItem('factoryOwners', JSON.stringify(updatedFactoryOwners));
       }
     }
     setSuppliers(updatedSuppliers);
-    localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
     setActiveModal(null);
   };
 
@@ -704,15 +805,12 @@ function App() {
     // Update all suppliers with old owner name
     const updatedSuppliers = suppliers.map(s => s.owner === ownerRenameForm.oldName ? { ...s, owner: ownerRenameForm.newName } : s);
     setSuppliers(updatedSuppliers);
-    localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
     // Update payments linked to this owner
     const updatedPayments = payments.map(p => p.factoryOwner === ownerRenameForm.oldName ? { ...p, factoryOwner: ownerRenameForm.newName } : p);
     setPayments(updatedPayments);
-    localStorage.setItem('payments', JSON.stringify(updatedPayments));
     // Update factoryOwners list
     const updatedFactoryOwners = factoryOwners.map(owner => owner === ownerRenameForm.oldName ? ownerRenameForm.newName : owner);
     setFactoryOwners(updatedFactoryOwners);
-    localStorage.setItem('factoryOwners', JSON.stringify(updatedFactoryOwners));
     setActiveModal(null);
   };
 
@@ -743,7 +841,6 @@ function App() {
         // 删除记录
         const updatedInvoices = invoices.filter(inv => inv.id !== invoiceId);
         setInvoices(updatedInvoices);
-        localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
         
         // 计算正确的剩余额度：固定额度 - 其他发票总额
         const remainingQuota = supplier.quarterlyLimit - otherInvoicesTotal;
@@ -754,7 +851,6 @@ function App() {
         // 删除记录
         const updatedInvoices = invoices.filter(inv => inv.id !== invoiceId);
         setInvoices(updatedInvoices);
-        localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
         
         alert('开票记录已删除，但未找到对应的开票主体。');
       }
@@ -767,7 +863,6 @@ function App() {
       // 删除记录
       const updatedInvoices = invoices.filter(inv => inv.id !== invoiceId);
       setInvoices(updatedInvoices);
-      localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
       
       alert('开票记录已删除。由于此发票不属于当前季度或下个季度，不影响当前可用额度。');
     }
@@ -776,7 +871,6 @@ function App() {
   const handleDeleteEntity = (id: string) => {
     const updatedSuppliers = suppliers.filter(s => s.id !== id);
     setSuppliers(updatedSuppliers);
-    localStorage.setItem('suppliers', JSON.stringify(updatedSuppliers));
   };
 
   const handleDeletePaymentRecord = (paymentId: string) => {
@@ -792,7 +886,6 @@ function App() {
           payments: updatedPayments
         }
       };
-      localStorage.setItem('invoiceBackup', JSON.stringify(updatedData));
       setBackupData(updatedData);
 
       alert('支付货款记录已删除！');
@@ -826,7 +919,6 @@ function App() {
 
     const updatedInvoices = [...invoices, newInvoice];
     setInvoices(updatedInvoices);
-    localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
     
     alert('发票识别完成，已添加到开票记录中！');
   };
@@ -835,7 +927,6 @@ function App() {
     // Only remove the factory from the factory owners list, keep all entities
     const updatedFactoryOwners = factoryOwners.filter(owner => owner !== ownerName);
     setFactoryOwners(updatedFactoryOwners);
-    localStorage.setItem('factoryOwners', JSON.stringify(updatedFactoryOwners));
     // Note: We don't delete the entities here anymore - they remain as orphaned records
   };
 
@@ -897,7 +988,6 @@ function App() {
       };
       const updatedPayments = [...payments, p];
       setPayments(updatedPayments);
-      localStorage.setItem('payments', JSON.stringify(updatedPayments));
     } else if (activeModal === 'addInvoice') {
       if (!transaction.storeId || !transaction.supplierId) return;
        const i: InvoiceRecord = {
@@ -909,7 +999,6 @@ function App() {
       };
       const updatedInvoices = [...invoices, i];
       setInvoices(updatedInvoices);
-      localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
     }
     setTransaction({ storeId: '', supplierId: '', amount: '', date: '' });
     setActiveModal(null);
@@ -955,19 +1044,16 @@ function App() {
       }
     };
     setQuarterData(newQuarterData);
-    localStorage.setItem('quarterData', JSON.stringify(newQuarterData));
     
     // 添加新季度到可用季度列表
     if (!availableQuarters.includes(newQuarterName)) {
       // 确保季度列表按顺序排列
       const updatedQuarters = [...availableQuarters, newQuarterName].sort();
       setAvailableQuarters(updatedQuarters);
-      localStorage.setItem('availableQuarters', JSON.stringify(updatedQuarters));
     }
     
     // 设置当前季度为新季度
     setCurrentQuarter(newQuarterName);
-    localStorage.setItem('currentQuarter', newQuarterName);
     
     // 重置新季度的数据
     const resetStores = stores.map(store => ({
@@ -996,11 +1082,6 @@ function App() {
     setInvoices([]);
     setPayments([]);
     
-    // 保存重置后的数据到localStorage
-    localStorage.setItem('stores', JSON.stringify(resetStores));
-    localStorage.setItem('suppliers', JSON.stringify(resetSuppliers));
-    localStorage.setItem('invoices', JSON.stringify([]));
-    localStorage.setItem('payments', JSON.stringify([]));
     
   };
 
@@ -1017,11 +1098,14 @@ function App() {
         payments: [...payments]
       }
     };
-    setQuarterData(newQuarterData);
-    localStorage.setItem('quarterData', JSON.stringify(newQuarterData));
     
     // 加载目标季度的数据
-    const targetQuarterData = quarterData[quarter];
+    // 注意：使用newQuarterData，而不是旧的quarterData状态
+    const targetQuarterData = newQuarterData[quarter];
+    
+    // 先更新季度数据状态
+    setQuarterData(newQuarterData);
+    
     if (targetQuarterData) {
       // 如果目标季度有数据，使用该数据
       setStores(targetQuarterData.stores);
@@ -1042,17 +1126,6 @@ function App() {
     
     // 切换到目标季度
     setCurrentQuarter(quarter);
-    localStorage.setItem('currentQuarter', quarter);
-    
-    // 更新localStorage中的当前数据
-    const currentStores = stores;
-    const currentSuppliers = suppliers;
-    const currentInvoices = invoices;
-    const currentPayments = payments;
-    localStorage.setItem('stores', JSON.stringify(currentStores));
-    localStorage.setItem('suppliers', JSON.stringify(currentSuppliers));
-    localStorage.setItem('invoices', JSON.stringify(currentInvoices));
-    localStorage.setItem('payments', JSON.stringify(currentPayments));
   };
 
   // Group suppliers by owner for display
@@ -1493,12 +1566,10 @@ function App() {
                                            const newQuarterData = { ...quarterData };
                                            delete newQuarterData[quarter];
                                            setQuarterData(newQuarterData);
-                                           localStorage.setItem('quarterData', JSON.stringify(newQuarterData));
                                             
                                            // 从availableQuarters中移除该季度
                                            const newAvailableQuarters = availableQuarters.filter(q => q !== quarter);
                                            setAvailableQuarters(newAvailableQuarters);
-                                           localStorage.setItem('availableQuarters', JSON.stringify(newAvailableQuarters));
                                             
                                            // 如果删除的是当前季度，切换到其他可用季度或保持当前季度但重置数据
                                            if (currentQuarter === quarter) {
@@ -1512,10 +1583,6 @@ function App() {
                                                    setSuppliers([]);
                                                    setInvoices([]);
                                                    setPayments([]);
-                                                   localStorage.setItem('stores', JSON.stringify([]));
-                                                   localStorage.setItem('suppliers', JSON.stringify([]));
-                                                   localStorage.setItem('invoices', JSON.stringify([]));
-                                                   localStorage.setItem('payments', JSON.stringify([]));
                                                }
                                            }
                                        }
@@ -1962,7 +2029,6 @@ function App() {
                   
                   const updatedInvoices = [...invoices, newInvoice];
                   setInvoices(updatedInvoices);
-                  localStorage.setItem('invoices', JSON.stringify(updatedInvoices));
                 }}
               /> */}
 

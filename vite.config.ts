@@ -20,6 +20,14 @@ export default defineConfig(({ mode }) => {
         }
       },
       // GitHub Pages配置，使用正确的仓库名称作为base路径
-      base: '/invoice-management/'
+      base: '/invoice-management/',
+      build: {
+        rollupOptions: {
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+            404: path.resolve(__dirname, '404.html')
+          }
+        }
+      }
     };
 });

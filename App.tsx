@@ -159,12 +159,20 @@ function App() {
       // 检查Supabase连接状态
       try {
         console.log('检查Supabase连接...');
+<<<<<<< HEAD
         const hasData = await hasDataInSupabaseCheck();
+=======
+        const hasData = await hasDataInSupabase();
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         console.log('Supabase有数据:', hasData);
         
         if (!hasData) {
           // 如果没有数据，从localStorage迁移
+<<<<<<< HEAD
           const migrated = await migrateDataFromLocalStorageLocal();
+=======
+          const migrated = await migrateDataFromLocalStorage();
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
           
           // 如果迁移成功，继续加载数据
           if (migrated) {
@@ -200,6 +208,7 @@ function App() {
           currentQuarterData,
           factoryOwnersData
         ] = await Promise.all([
+<<<<<<< HEAD
           fetchStoresSupabase(),
           fetchSuppliersSupabase(),
           fetchInvoicesSupabase(),
@@ -208,6 +217,16 @@ function App() {
           fetchAvailableQuartersSupabase(),
           fetchCurrentQuarterSupabase(),
           fetchFactoryOwnersSupabase()
+=======
+          fetchStores(),
+          fetchSuppliers(),
+          fetchInvoices(),
+          fetchPayments(),
+          fetchQuarterData(),
+          fetchAvailableQuarters(),
+          fetchCurrentQuarter(),
+          fetchFactoryOwners()
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         ]);
         
         // 更新状态
@@ -238,6 +257,7 @@ function App() {
           } catch (saveError) {
             console.error('保存默认数据到Supabase失败:', saveError);
           }
+<<<<<<< HEAD
           
           // 保存到localStorage作为备份
           try {
@@ -271,6 +291,8 @@ function App() {
           } catch (localError) {
             console.error('保存到localStorage失败:', localError);
           }
+=======
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         }
       } catch (supabaseError) {
         console.error('Supabase连接或操作失败:', supabaseError);
@@ -331,9 +353,20 @@ function App() {
         }
       }
       
+<<<<<<< HEAD
       // 移除循环调用，因为saveAllData会触发useEffect，导致无限循环
       // loadData的职责是加载数据，而不是保存数据
       // 数据保存由useEffect和用户操作触发
+=======
+      // 如果有Supabase连接，尝试保存数据
+      if (hasSupabaseConnection) {
+        try {
+          await saveAllData();
+        } catch (saveError) {
+          console.error('保存数据到Supabase失败:', saveError);
+        }
+      }
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
     } catch (error) {
       console.error('加载数据失败:', error);
       // 加载失败时使用默认数据
@@ -459,6 +492,7 @@ function App() {
       
       // 检查是否有数据需要保存
       if (stores.length === 0 && suppliers.length === 0 && invoices.length === 0 && payments.length === 0) {
+<<<<<<< HEAD
         console.log('没有数据需要保存');
         return;
       }
@@ -519,9 +553,40 @@ function App() {
         } catch (localError) {
           console.error('保存到localStorage也失败:', localError);
         }
+=======
+        console.log('没有数据需要保存到Supabase');
+        return;
+      }
+      
+      const results = await Promise.all([
+        saveStores(stores),
+        saveSuppliers(suppliers),
+        saveInvoices(invoices),
+        savePayments(payments),
+        saveQuarterData(quarterData),
+        saveAvailableQuarters(availableQuarters),
+        saveCurrentQuarter(currentQuarter),
+        saveFactoryOwners(factoryOwners)
+      ]);
+      
+      console.log('数据保存完成，结果:', results);
+      
+      // 检查是否有保存失败的结果
+      const failedResults = results.filter(result => result === false);
+      if (failedResults.length > 0) {
+        console.error(`${failedResults.length}项数据保存失败`);
+>>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
       }
     } catch (error) {
       console.error('保存数据失败:', error);
+      // 检查是否是网络连接错误
+      if (error instanceof Error) {
+        if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch') || error.message.includes('timeout')) {
+          console.error('网络连接错误，请检查您的网络连接或Supabase配置');
+        } else if (error.message.includes('Supabase URL')) {
+          console.error('Supabase配置错误，请检查环境变量');
+        }
+      }
     }
   };
   

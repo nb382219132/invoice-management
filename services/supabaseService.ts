@@ -65,13 +65,7 @@ export const subscribeToStores = (callback: (stores: StoreCompany[]) => void) =>
   
   console.log('Subscribing to stores changes...');
   
-  // 首次获取数据
-  fetchStores().then(stores => {
-    console.log('Initial stores data loaded:', stores.length, 'records');
-    callback(stores);
-  });
-  
-  // 订阅变化
+  // 订阅变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('stores-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, async (event) => {
@@ -93,13 +87,7 @@ export const subscribeToSuppliers = (callback: (suppliers: SupplierEntity[]) => 
   
   console.log('Subscribing to suppliers changes...');
   
-  // 首次获取数据
-  fetchSuppliers().then(suppliers => {
-    console.log('Initial suppliers data loaded:', suppliers.length, 'records');
-    callback(suppliers);
-  });
-  
-  // 订阅变化
+  // 订阅变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('suppliers-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, async (event) => {
@@ -121,13 +109,7 @@ export const subscribeToFactoryOwners = (callback: (factoryOwners: string[]) => 
   
   console.log('Subscribing to factory_owners changes...');
   
-  // 首次获取数据
-  fetchFactoryOwners().then(factoryOwners => {
-    console.log('Initial factoryOwners data loaded:', factoryOwners.length, 'records');
-    callback(factoryOwners);
-  });
-  
-  // 订阅变化
+  // 订阅变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('factory-owners-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, async (event) => {
@@ -149,13 +131,7 @@ export const subscribeToInvoices = (callback: (invoices: InvoiceRecord[]) => voi
   
   console.log('Subscribing to invoices changes...');
   
-  // 首次获取数据
-  fetchInvoices().then(invoices => {
-    console.log('Initial invoices data loaded:', invoices.length, 'records');
-    callback(invoices);
-  });
-  
-  // 订阅变化
+  // 订阅变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('invoices-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, async (event) => {
@@ -177,13 +153,7 @@ export const subscribeToPayments = (callback: (payments: PaymentRecord[]) => voi
   
   console.log('Subscribing to payments changes...');
   
-  // 首次获取数据
-  fetchPayments().then(payments => {
-    console.log('Initial payments data loaded:', payments.length, 'records');
-    callback(payments);
-  });
-  
-  // 订阅变化
+  // 订阅变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('payments-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, async (event) => {
@@ -205,7 +175,7 @@ export const subscribeToQuarterData = (callback: () => void) => {
   
   console.log('Subscribing to quarter data changes...');
   
-  // 订阅所有季度相关表的变化
+  // 订阅所有季度相关表的变化，不获取初始数据（由loadData函数负责）
   const channel = client
     .channel('quarter-channel')
     .on('postgres_changes', { event: '*', schema: 'public', table: 'quarter_data' }, (event) => {

@@ -177,7 +177,16 @@ function App() {
       
       if (!hasData) {
         // 如果没有数据，从localStorage迁移
-        await migrateDataFromLocalStorage();
+        const migrated = await migrateDataFromLocalStorage();
+        
+        // 如果迁移成功，继续加载数据
+        if (migrated) {
+          console.log('从localStorage迁移数据成功');
+        } else {
+          console.log('localStorage中没有数据，使用默认数据');
+          // 如果localStorage中没有数据，直接使用默认数据并保存到Supabase
+          await saveAllDataWithDefaults();
+        }
       }
       
       // 从Supabase加载所有数据
@@ -213,10 +222,15 @@ function App() {
       
       // 只有当所有核心表都没有数据时，才使用默认值
       if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
+        console.log('Supabase中没有数据，使用默认数据');
+        // 使用默认数据
         setStores(MOCK_STORES);
         setSuppliers(MOCK_SUPPLIERS);
         setInvoices(MOCK_INVOICES);
         setPayments(MOCK_PAYMENTS);
+        
+        // 保存默认数据到Supabase
+        await saveAllDataWithDefaults();
       }
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -225,8 +239,33 @@ function App() {
       setSuppliers(MOCK_SUPPLIERS);
       setInvoices(MOCK_INVOICES);
       setPayments(MOCK_PAYMENTS);
+      
+      // 保存默认数据到Supabase
+      await saveAllDataWithDefaults();
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  // 使用默认数据保存到Supabase
+  const saveAllDataWithDefaults = async () => {
+    try {
+      console.log('使用默认数据保存到Supabase...');
+      
+      // 保存默认数据到Supabase
+      await Promise.all([
+        saveStores(MOCK_STORES),
+        saveSuppliers(MOCK_SUPPLIERS),
+        saveInvoices(MOCK_INVOICES),
+        savePayments(MOCK_PAYMENTS),
+        saveAvailableQuarters(['2025Q3']),
+        saveCurrentQuarter('2025Q3'),
+        saveFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
+      ]);
+      
+      console.log('默认数据保存成功！');
+    } catch (error) {
+      console.error('保存默认数据失败:', error);
     }
   };
   

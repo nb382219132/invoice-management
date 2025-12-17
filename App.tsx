@@ -172,65 +172,157 @@ function App() {
     try {
       setIsLoading(true);
       
-      // 检查Supabase是否已有数据
-      const hasData = await hasDataInSupabase();
+      let hasSupabaseConnection = true;
       
-      if (!hasData) {
-        // 如果没有数据，从localStorage迁移
-        const migrated = await migrateDataFromLocalStorage();
+      // 检查Supabase连接状态
+      try {
+        console.log('检查Supabase连接...');
+        const hasData = await hasDataInSupabase();
+        console.log('Supabase有数据:', hasData);
         
-        // 如果迁移成功，继续加载数据
-        if (migrated) {
-          console.log('从localStorage迁移数据成功');
-        } else {
-          console.log('localStorage中没有数据，使用默认数据');
-          // 如果localStorage中没有数据，直接使用默认数据并保存到Supabase
-          await saveAllDataWithDefaults();
+        if (!hasData) {
+          // 如果没有数据，从localStorage迁移
+          const migrated = await migrateDataFromLocalStorage();
+          
+          // 如果迁移成功，继续加载数据
+          if (migrated) {
+            console.log('从localStorage迁移数据成功');
+          } else {
+            console.log('localStorage中没有数据，使用默认数据');
+            // 如果localStorage中没有数据，直接使用默认数据
+            setStores(MOCK_STORES);
+            setSuppliers(MOCK_SUPPLIERS);
+            setInvoices(MOCK_INVOICES);
+            setPayments(MOCK_PAYMENTS);
+            setCurrentQuarter('2025Q3');
+            setAvailableQuarters(['2025Q3']);
+            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+            
+            // 尝试保存默认数据到Supabase，但不影响应用运行
+            try {
+              await saveAllDataWithDefaults();
+            } catch (saveError) {
+              console.error('保存默认数据到Supabase失败:', saveError);
+            }
+          }
+        }
+        
+        // 从Supabase加载所有数据
+        const [
+          storesData,
+          suppliersData,
+          invoicesData,
+          paymentsData,
+          quarterDataData,
+          availableQuartersData,
+          currentQuarterData,
+          factoryOwnersData
+        ] = await Promise.all([
+          fetchStores(),
+          fetchSuppliers(),
+          fetchInvoices(),
+          fetchPayments(),
+          fetchQuarterData(),
+          fetchAvailableQuarters(),
+          fetchCurrentQuarter(),
+          fetchFactoryOwners()
+        ]);
+        
+        // 更新状态
+        setStores(storesData);
+        setSuppliers(suppliersData);
+        setInvoices(invoicesData);
+        setPayments(paymentsData);
+        setQuarterData(quarterDataData);
+        setAvailableQuarters(availableQuartersData);
+        setCurrentQuarter(currentQuarterData);
+        setFactoryOwners(factoryOwnersData);
+        
+        // 只有当所有核心表都没有数据时，才使用默认值
+        if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
+          console.log('Supabase中没有数据，使用默认数据');
+          // 使用默认数据
+          setStores(MOCK_STORES);
+          setSuppliers(MOCK_SUPPLIERS);
+          setInvoices(MOCK_INVOICES);
+          setPayments(MOCK_PAYMENTS);
+          setCurrentQuarter('2025Q3');
+          setAvailableQuarters(['2025Q3']);
+          setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+          
+          // 尝试保存默认数据到Supabase，但不影响应用运行
+          try {
+            await saveAllDataWithDefaults();
+          } catch (saveError) {
+            console.error('保存默认数据到Supabase失败:', saveError);
+          }
+        }
+      } catch (supabaseError) {
+        console.error('Supabase连接或操作失败:', supabaseError);
+        hasSupabaseConnection = false;
+        
+        // 检查是否是网络连接错误
+        if (supabaseError instanceof Error) {
+          if (supabaseError.message.includes('NetworkError') || supabaseError.message.includes('Failed to fetch') || supabaseError.message.includes('timeout') || supabaseError.message.includes('Unknown host')) {
+            console.error('网络连接错误，无法连接到Supabase');
+          } else {
+            console.error('Supabase操作错误:', supabaseError.message);
+          }
+        }
+        
+        // 从localStorage加载数据作为备选
+        try {
+          console.log('尝试从localStorage加载数据...');
+          const storesJson = localStorage.getItem('stores');
+          const suppliersJson = localStorage.getItem('suppliers');
+          const invoicesJson = localStorage.getItem('invoices');
+          const paymentsJson = localStorage.getItem('payments');
+          const quarterDataJson = localStorage.getItem('quarterData');
+          const availableQuartersJson = localStorage.getItem('availableQuarters');
+          const currentQuarter = localStorage.getItem('currentQuarter');
+          const factoryOwnersJson = localStorage.getItem('factoryOwners');
+          
+          if (storesJson || suppliersJson || invoicesJson || paymentsJson) {
+            console.log('从localStorage加载数据成功');
+            setStores(storesJson ? JSON.parse(storesJson) : MOCK_STORES);
+            setSuppliers(suppliersJson ? JSON.parse(suppliersJson) : MOCK_SUPPLIERS);
+            setInvoices(invoicesJson ? JSON.parse(invoicesJson) : MOCK_INVOICES);
+            setPayments(paymentsJson ? JSON.parse(paymentsJson) : MOCK_PAYMENTS);
+            setQuarterData(quarterDataJson ? JSON.parse(quarterDataJson) : {});
+            setAvailableQuarters(availableQuartersJson ? JSON.parse(availableQuartersJson) : ['2025Q3']);
+            setCurrentQuarter(currentQuarter || '2025Q3');
+            setFactoryOwners(factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+          } else {
+            console.log('localStorage中没有数据，使用默认数据');
+            // 使用默认数据
+            setStores(MOCK_STORES);
+            setSuppliers(MOCK_SUPPLIERS);
+            setInvoices(MOCK_INVOICES);
+            setPayments(MOCK_PAYMENTS);
+            setCurrentQuarter('2025Q3');
+            setAvailableQuarters(['2025Q3']);
+            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+          }
+        } catch (localStorageError) {
+          console.error('从localStorage加载数据失败:', localStorageError);
+          // 使用默认数据
+          setStores(MOCK_STORES);
+          setSuppliers(MOCK_SUPPLIERS);
+          setInvoices(MOCK_INVOICES);
+          setPayments(MOCK_PAYMENTS);
+          setCurrentQuarter('2025Q3');
+          setAvailableQuarters(['2025Q3']);
+          setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
         }
       }
       
-      // 从Supabase加载所有数据
-      const [
-        storesData,
-        suppliersData,
-        invoicesData,
-        paymentsData,
-        quarterDataData,
-        availableQuartersData,
-        currentQuarterData,
-        factoryOwnersData
-      ] = await Promise.all([
-        fetchStores(),
-        fetchSuppliers(),
-        fetchInvoices(),
-        fetchPayments(),
-        fetchQuarterData(),
-        fetchAvailableQuarters(),
-        fetchCurrentQuarter(),
-        fetchFactoryOwners()
-      ]);
-      
-      // 更新状态
-      setStores(storesData);
-      setSuppliers(suppliersData);
-      setInvoices(invoicesData);
-      setPayments(paymentsData);
-      setQuarterData(quarterDataData);
-      setAvailableQuarters(availableQuartersData);
-      setCurrentQuarter(currentQuarterData);
-      setFactoryOwners(factoryOwnersData);
-      
-      // 只有当所有核心表都没有数据时，才使用默认值
-      if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
-        console.log('Supabase中没有数据，使用默认数据');
-        // 使用默认数据
-        setStores(MOCK_STORES);
-        setSuppliers(MOCK_SUPPLIERS);
-        setInvoices(MOCK_INVOICES);
-        setPayments(MOCK_PAYMENTS);
-        
-        // 保存默认数据到Supabase
-        await saveAllDataWithDefaults();
+      // 如果有Supabase连接，尝试保存数据
+      if (hasSupabaseConnection) {
+        try {
+          await saveAllData();
+        } catch (saveError) {
+          console.error('保存数据到Supabase失败:', saveError);
+        }
       }
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -239,9 +331,9 @@ function App() {
       setSuppliers(MOCK_SUPPLIERS);
       setInvoices(MOCK_INVOICES);
       setPayments(MOCK_PAYMENTS);
-      
-      // 保存默认数据到Supabase
-      await saveAllDataWithDefaults();
+      setCurrentQuarter('2025Q3');
+      setAvailableQuarters(['2025Q3']);
+      setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
     } finally {
       setIsLoading(false);
     }
@@ -355,6 +447,12 @@ function App() {
       console.log('保存的invoices数量:', invoices.length);
       console.log('保存的factoryOwners数量:', factoryOwners.length);
       
+      // 检查是否有数据需要保存
+      if (stores.length === 0 && suppliers.length === 0 && invoices.length === 0 && payments.length === 0) {
+        console.log('没有数据需要保存到Supabase');
+        return;
+      }
+      
       const results = await Promise.all([
         saveStores(stores),
         saveSuppliers(suppliers),
@@ -367,8 +465,22 @@ function App() {
       ]);
       
       console.log('数据保存完成，结果:', results);
+      
+      // 检查是否有保存失败的结果
+      const failedResults = results.filter(result => result === false);
+      if (failedResults.length > 0) {
+        console.error(`${failedResults.length}项数据保存失败`);
+      }
     } catch (error) {
       console.error('保存数据失败:', error);
+      // 检查是否是网络连接错误
+      if (error instanceof Error) {
+        if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch') || error.message.includes('timeout')) {
+          console.error('网络连接错误，请检查您的网络连接或Supabase配置');
+        } else if (error.message.includes('Supabase URL')) {
+          console.error('Supabase配置错误，请检查环境变量');
+        }
+      }
     }
   };
   

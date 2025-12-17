@@ -178,37 +178,9 @@ function App() {
       // 检查Supabase连接状态
       try {
         console.log('检查Supabase连接...');
-        const hasData = await hasDataInSupabase();
-        console.log('Supabase有数据:', hasData);
         
-        if (!hasData) {
-          // 如果没有数据，从localStorage迁移
-          const migrated = await migrateDataFromLocalStorage();
-          
-          // 如果迁移成功，继续加载数据
-          if (migrated) {
-            console.log('从localStorage迁移数据成功');
-          } else {
-            console.log('localStorage中没有数据，使用默认数据');
-            // 如果localStorage中没有数据，直接使用默认数据
-            setStores(MOCK_STORES);
-            setSuppliers(MOCK_SUPPLIERS);
-            setInvoices(MOCK_INVOICES);
-            setPayments(MOCK_PAYMENTS);
-            setCurrentQuarter('2025Q3');
-            setAvailableQuarters(['2025Q3']);
-            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
-            
-            // 尝试保存默认数据到Supabase，但不影响应用运行
-            try {
-              await saveAllDataWithDefaults();
-            } catch (saveError) {
-              console.error('保存默认数据到Supabase失败:', saveError);
-            }
-          }
-        }
-        
-        // 从Supabase加载所有数据
+        // 直接从Supabase加载所有数据，不预先检查hasDataInSupabase
+        // 避免因为单个表为空导致逻辑错误
         const [
           storesData,
           suppliersData,
@@ -229,50 +201,107 @@ function App() {
           fetchFactoryOwners()
         ]);
         
-        // 更新状态
-        setStores(storesData);
-        setSuppliers(suppliersData);
-        setInvoices(invoicesData);
-        setPayments(paymentsData);
-        setQuarterData(quarterDataData);
-        setAvailableQuarters(availableQuartersData);
-        setCurrentQuarter(currentQuarterData);
-        setFactoryOwners(factoryOwnersData);
+        // 检查是否所有核心表都为空
+        const allTablesEmpty = storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && paymentsData.length === 0;
         
-        // 只有当所有核心表都没有数据时，才使用默认值
-        if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
-          console.log('Supabase中没有数据，使用默认数据');
-          // 使用默认数据
-          setStores(MOCK_STORES);
-          setSuppliers(MOCK_SUPPLIERS);
-          setInvoices(MOCK_INVOICES);
-          setPayments(MOCK_PAYMENTS);
-          setCurrentQuarter('2025Q3');
-          setAvailableQuarters(['2025Q3']);
-          setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+        if (allTablesEmpty) {
+          console.log('所有Supabase表都为空，尝试从localStorage迁移数据...');
           
-          // 尝试保存默认数据到Supabase，但不影响应用运行
-          try {
-            await saveAllDataWithDefaults();
-          } catch (saveError) {
-            console.error('保存默认数据到Supabase失败:', saveError);
-          }
+          // 从localStorage迁移数据
+          const migrated = await migrateDataFromLocalStorage();
           
-          // 保存到localStorage作为备份
-          try {
-            localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
-            localStorage.setItem('suppliers', JSON.stringify(MOCK_SUPPLIERS));
-            localStorage.setItem('invoices', JSON.stringify(MOCK_INVOICES));
-            localStorage.setItem('payments', JSON.stringify(MOCK_PAYMENTS));
-            localStorage.setItem('currentQuarter', '2025Q3');
-            localStorage.setItem('availableQuarters', JSON.stringify(['2025Q3']));
-            localStorage.setItem('factoryOwners', JSON.stringify([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]));
-            console.log('默认数据保存到localStorage作为备份成功！');
-          } catch (localError) {
-            console.error('保存到localStorage失败:', localError);
+          if (migrated) {
+            console.log('从localStorage迁移数据成功，重新加载数据...');
+            // 重新加载数据
+            const [
+              newStoresData,
+              newSuppliersData,
+              newInvoicesData,
+              newPaymentsData,
+              newQuarterDataData,
+              newAvailableQuartersData,
+              newCurrentQuarterData,
+              newFactoryOwnersData
+            ] = await Promise.all([
+              fetchStores(),
+              fetchSuppliers(),
+              fetchInvoices(),
+              fetchPayments(),
+              fetchQuarterData(),
+              fetchAvailableQuarters(),
+              fetchCurrentQuarter(),
+              fetchFactoryOwners()
+            ]);
+            
+            // 更新状态
+            setStores(newStoresData);
+            setSuppliers(newSuppliersData);
+            setInvoices(newInvoicesData);
+            setPayments(newPaymentsData);
+            setQuarterData(newQuarterDataData);
+            setAvailableQuarters(newAvailableQuartersData);
+            setCurrentQuarter(newCurrentQuarterData);
+            setFactoryOwners(newFactoryOwnersData);
+            
+            // 保存到localStorage作为备份
+            try {
+              localStorage.setItem('stores', JSON.stringify(newStoresData));
+              localStorage.setItem('suppliers', JSON.stringify(newSuppliersData));
+              localStorage.setItem('invoices', JSON.stringify(newInvoicesData));
+              localStorage.setItem('payments', JSON.stringify(newPaymentsData));
+              localStorage.setItem('quarterData', JSON.stringify(newQuarterDataData));
+              localStorage.setItem('availableQuarters', JSON.stringify(newAvailableQuartersData));
+              localStorage.setItem('currentQuarter', newCurrentQuarterData);
+              localStorage.setItem('factoryOwners', JSON.stringify(newFactoryOwnersData));
+              console.log('迁移数据保存到localStorage作为备份成功！');
+            } catch (localError) {
+              console.error('保存到localStorage失败:', localError);
+            }
+          } else {
+            console.log('localStorage中没有数据，使用默认数据');
+            // 如果localStorage中也没有数据，使用默认数据
+            setStores(MOCK_STORES);
+            setSuppliers(MOCK_SUPPLIERS);
+            setInvoices(MOCK_INVOICES);
+            setPayments(MOCK_PAYMENTS);
+            setCurrentQuarter('2025Q3');
+            setAvailableQuarters(['2025Q3']);
+            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
+            
+            // 保存默认数据到Supabase
+            try {
+              await saveAllDataWithDefaults();
+            } catch (saveError) {
+              console.error('保存默认数据到Supabase失败:', saveError);
+            }
+            
+            // 保存到localStorage作为备份
+            try {
+              localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
+              localStorage.setItem('suppliers', JSON.stringify(MOCK_SUPPLIERS));
+              localStorage.setItem('invoices', JSON.stringify(MOCK_INVOICES));
+              localStorage.setItem('payments', JSON.stringify(MOCK_PAYMENTS));
+              localStorage.setItem('currentQuarter', '2025Q3');
+              localStorage.setItem('availableQuarters', JSON.stringify(['2025Q3']));
+              localStorage.setItem('factoryOwners', JSON.stringify([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]));
+              console.log('默认数据保存到localStorage作为备份成功！');
+            } catch (localError) {
+              console.error('保存到localStorage失败:', localError);
+            }
           }
         } else {
-          // 从Supabase成功加载数据，保存到localStorage作为备份
+          console.log('从Supabase加载数据成功！');
+          // 更新状态
+          setStores(storesData);
+          setSuppliers(suppliersData);
+          setInvoices(invoicesData);
+          setPayments(paymentsData);
+          setQuarterData(quarterDataData);
+          setAvailableQuarters(availableQuartersData);
+          setCurrentQuarter(currentQuarterData);
+          setFactoryOwners(factoryOwnersData);
+          
+          // 保存到localStorage作为备份
           try {
             localStorage.setItem('stores', JSON.stringify(storesData));
             localStorage.setItem('suppliers', JSON.stringify(suppliersData));

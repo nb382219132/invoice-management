@@ -605,6 +605,16 @@ export const migrateDataFromLocalStorage = async (force: boolean = false): Promi
       return false; // 返回false，表示需要使用默认数据
     }
     
+    // 如果不是强制迁移，检查Supabase中是否已有数据
+    // 如果已有数据，就跳过迁移，避免覆盖
+    if (!force) {
+      const hasData = await hasDataInSupabase();
+      if (hasData) {
+        console.log('Supabase中已有数据，跳过从localStorage迁移数据');
+        return true; // 返回true，表示迁移已完成（跳过）
+      }
+    }
+    
     // 解析数据
     const stores = storesJson ? JSON.parse(storesJson) : [];
     const suppliers = suppliersJson ? JSON.parse(suppliersJson) : [];
@@ -688,21 +698,25 @@ export const hasDataInSupabase = async (): Promise<boolean> => {
   try {
     const client = getSupabaseClient();
     
-    // 只检查stores表，因为它是核心数据
-    // 减少不必要的请求，提高性能
-    const { data, error } = await client
-      .from('stores')
-      .select('id')
-      .limit(1)
-      .timeout(5000); // 设置查询超时
+    // 检查多个表，只要有一个表有数据就返回true
+    // 避免因为单个表为空导致数据被重置
+    const [storesResult, suppliersResult, invoicesResult] = await Promise.all([
+      client.from('stores').select('id').limit(1).timeout(3000),
+      client.from('suppliers').select('id').limit(1).timeout(3000),
+      client.from('invoices').select('id').limit(1).timeout(3000)
+    ]);
     
-    if (error) {
-      console.error('Error checking stores existence:', error);
+    // 检查是否有任何错误
+    const hasError = storesResult.error || suppliersResult.error || invoicesResult.error;
+    if (hasError) {
+      console.error('Error checking data existence:', hasError);
       return false;
     }
     
-    console.log('hasDataInSupabase result:', data.length > 0);
-    return data.length > 0;
+    // 只要有一个表有数据就返回true
+    const hasData = storesResult.data.length > 0 || suppliersResult.data.length > 0 || invoicesResult.data.length > 0;
+    console.log('hasDataInSupabase result:', hasData);
+    return hasData;
   } catch (error) {
     console.error('Error checking data existence:', error);
     return false;

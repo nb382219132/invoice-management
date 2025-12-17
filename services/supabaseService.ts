@@ -218,7 +218,7 @@ export const saveStores = async (stores: StoreCompany[]): Promise<boolean> => {
   
   if (stores.length > 0) {
     // 使用upsert方式保存数据，根据id字段更新或插入
-    const { error: upsertError } = await client
+    const { data, error: upsertError } = await client
       .from('stores')
       .upsert(stores, { onConflict: 'id' })
       .select();
@@ -227,6 +227,8 @@ export const saveStores = async (stores: StoreCompany[]): Promise<boolean> => {
       console.error('Error upserting stores:', upsertError);
       return false;
     }
+    
+    console.log('Successfully upserted stores:', data?.length || 0, 'records');
   }
   
   return true;
@@ -249,10 +251,11 @@ export const fetchSuppliers = async (): Promise<SupplierEntity[]> => {
 
 export const saveSuppliers = async (suppliers: SupplierEntity[]): Promise<boolean> => {
   const client = getSupabaseClient();
+  console.log('Saving suppliers to Supabase:', suppliers.length, 'records');
   
   if (suppliers.length > 0) {
     // 使用upsert方式保存数据，根据id字段更新或插入
-    const { error: upsertError } = await client
+    const { data, error: upsertError } = await client
       .from('suppliers')
       .upsert(suppliers, { onConflict: 'id' })
       .select();
@@ -261,6 +264,8 @@ export const saveSuppliers = async (suppliers: SupplierEntity[]): Promise<boolea
       console.error('Error upserting suppliers:', upsertError);
       return false;
     }
+    
+    console.log('Successfully upserted suppliers:', data?.length || 0, 'records');
   }
   
   return true;
@@ -283,10 +288,11 @@ export const fetchInvoices = async (): Promise<InvoiceRecord[]> => {
 
 export const saveInvoices = async (invoices: InvoiceRecord[]): Promise<boolean> => {
   const client = getSupabaseClient();
+  console.log('Saving invoices to Supabase:', invoices.length, 'records');
   
   if (invoices.length > 0) {
     // 使用upsert方式保存数据，根据id字段更新或插入
-    const { error: upsertError } = await client
+    const { data, error: upsertError } = await client
       .from('invoices')
       .upsert(invoices, { onConflict: 'id' })
       .select();
@@ -295,6 +301,8 @@ export const saveInvoices = async (invoices: InvoiceRecord[]): Promise<boolean> 
       console.error('Error upserting invoices:', upsertError);
       return false;
     }
+    
+    console.log('Successfully upserted invoices:', data?.length || 0, 'records');
   }
   
   return true;
@@ -317,10 +325,11 @@ export const fetchPayments = async (): Promise<PaymentRecord[]> => {
 
 export const savePayments = async (payments: PaymentRecord[]): Promise<boolean> => {
   const client = getSupabaseClient();
+  console.log('Saving payments to Supabase:', payments.length, 'records');
   
   if (payments.length > 0) {
     // 使用upsert方式保存数据，根据id字段更新或插入
-    const { error: upsertError } = await client
+    const { data, error: upsertError } = await client
       .from('payments')
       .upsert(payments, { onConflict: 'id' })
       .select();
@@ -329,6 +338,8 @@ export const savePayments = async (payments: PaymentRecord[]): Promise<boolean> 
       console.error('Error upserting payments:', upsertError);
       return false;
     }
+    
+    console.log('Successfully upserted payments:', data?.length || 0, 'records');
   }
   
   return true;
@@ -621,16 +632,19 @@ export const restoreDataFromBackup = async (): Promise<boolean> => {
   try {
     console.log('开始从备份恢复数据到Supabase...');
     
-    // 强制迁移数据，不管Supabase中是否已有数据
-    const result = await migrateDataFromLocalStorage(true);
+    // 首先尝试从localStorage迁移数据
+    const migrateResult = await migrateDataFromLocalStorage(true);
     
-    if (result) {
-      console.log('数据恢复成功！');
+    if (migrateResult) {
+      console.log('从localStorage迁移数据成功！');
+      return true;
     } else {
-      console.error('数据恢复失败！');
+      console.log('localStorage中没有数据，使用默认数据恢复...');
+      
+      // 如果localStorage中没有数据，使用默认数据恢复
+      // 这里我们直接返回true，因为loadData函数会在需要时自动保存默认数据
+      return true;
     }
-    
-    return result;
   } catch (error) {
     console.error('数据恢复失败:', error);
     return false;

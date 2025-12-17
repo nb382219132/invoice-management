@@ -139,29 +139,17 @@ export const saveStores = async (stores: StoreCompany[]): Promise<boolean> => {
   const client = getSupabaseClient();
   console.log('Saving stores to Supabase:', stores.length, 'records');
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('stores')
-    .delete()
-    .neq('id', '');
-  
-  if (deleteError) {
-    console.error('Error deleting stores:', deleteError);
-    return false;
-  }
-  
-  // 插入新数据
   if (stores.length > 0) {
-    const { error: insertError, data: insertedData } = await client
+    // 使用upsert方式保存数据，根据id字段更新或插入
+    const { error: upsertError } = await client
       .from('stores')
-      .insert(stores)
+      .upsert(stores, { onConflict: 'id' })
       .select();
     
-    if (insertError) {
-      console.error('Error inserting stores:', insertError);
+    if (upsertError) {
+      console.error('Error upserting stores:', upsertError);
       return false;
     }
-    console.log('Successfully inserted stores:', insertedData?.length, 'records');
   }
   
   return true;
@@ -185,25 +173,15 @@ export const fetchSuppliers = async (): Promise<SupplierEntity[]> => {
 export const saveSuppliers = async (suppliers: SupplierEntity[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('suppliers')
-    .delete()
-    .neq('id', '');
-  
-  if (deleteError) {
-    console.error('Error deleting suppliers:', deleteError);
-    return false;
-  }
-  
-  // 插入新数据
   if (suppliers.length > 0) {
-    const { error: insertError } = await client
+    // 使用upsert方式保存数据，根据id字段更新或插入
+    const { error: upsertError } = await client
       .from('suppliers')
-      .insert(suppliers);
+      .upsert(suppliers, { onConflict: 'id' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting suppliers:', insertError);
+    if (upsertError) {
+      console.error('Error upserting suppliers:', upsertError);
       return false;
     }
   }
@@ -229,25 +207,15 @@ export const fetchInvoices = async (): Promise<InvoiceRecord[]> => {
 export const saveInvoices = async (invoices: InvoiceRecord[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('invoices')
-    .delete()
-    .neq('id', '');
-  
-  if (deleteError) {
-    console.error('Error deleting invoices:', deleteError);
-    return false;
-  }
-  
-  // 插入新数据
   if (invoices.length > 0) {
-    const { error: insertError } = await client
+    // 使用upsert方式保存数据，根据id字段更新或插入
+    const { error: upsertError } = await client
       .from('invoices')
-      .insert(invoices);
+      .upsert(invoices, { onConflict: 'id' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting invoices:', insertError);
+    if (upsertError) {
+      console.error('Error upserting invoices:', upsertError);
       return false;
     }
   }
@@ -273,25 +241,15 @@ export const fetchPayments = async (): Promise<PaymentRecord[]> => {
 export const savePayments = async (payments: PaymentRecord[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('payments')
-    .delete()
-    .neq('id', '');
-  
-  if (deleteError) {
-    console.error('Error deleting payments:', deleteError);
-    return false;
-  }
-  
-  // 插入新数据
   if (payments.length > 0) {
-    const { error: insertError } = await client
+    // 使用upsert方式保存数据，根据id字段更新或插入
+    const { error: upsertError } = await client
       .from('payments')
-      .insert(payments);
+      .upsert(payments, { onConflict: 'id' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting payments:', insertError);
+    if (upsertError) {
+      console.error('Error upserting payments:', upsertError);
       return false;
     }
   }
@@ -330,19 +288,8 @@ export const fetchQuarterData = async (): Promise<Record<string, any>> => {
 export const saveQuarterData = async (quarterData: Record<string, any>): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('quarter_data')
-    .delete()
-    .neq('id', '');
-  
-  if (deleteError) {
-    console.error('Error deleting quarter data:', deleteError);
-    return false;
-  }
-  
-  // 准备插入数据
-  const insertData = Object.entries(quarterData).map(([quarterName, data]) => ({
+  // 准备upsert数据
+  const upsertData = Object.entries(quarterData).map(([quarterName, data]) => ({
     quarter_name: quarterName,
     stores: data.stores || [],
     suppliers: data.suppliers || [],
@@ -350,14 +297,15 @@ export const saveQuarterData = async (quarterData: Record<string, any>): Promise
     payments: data.payments || []
   }));
   
-  // 插入新数据
-  if (insertData.length > 0) {
-    const { error: insertError } = await client
+  // 使用upsert方式保存数据，根据quarter_name字段更新或插入
+  if (upsertData.length > 0) {
+    const { error: upsertError } = await client
       .from('quarter_data')
-      .insert(insertData);
+      .upsert(upsertData, { onConflict: 'quarter_name' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting quarter data:', insertError);
+    if (upsertError) {
+      console.error('Error upserting quarter data:', upsertError);
       return false;
     }
   }
@@ -384,30 +332,39 @@ export const fetchAvailableQuarters = async (): Promise<string[]> => {
 export const saveAvailableQuarters = async (quarters: string[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('available_quarters')
-    .delete()
-    .neq('id', '');
+  // 先获取现有季度列表
+  const existingQuarters = await fetchAvailableQuarters();
   
-  if (deleteError) {
-    console.error('Error deleting available quarters:', deleteError);
-    return false;
+  // 确定需要删除的季度
+  const quartersToDelete = existingQuarters.filter(q => !quarters.includes(q));
+  
+  // 删除不存在的季度
+  if (quartersToDelete.length > 0) {
+    const { error: deleteError } = await client
+      .from('available_quarters')
+      .delete()
+      .in('quarter_name', quartersToDelete);
+    
+    if (deleteError) {
+      console.error('Error deleting available quarters:', deleteError);
+      return false;
+    }
   }
   
-  // 准备插入数据
-  const insertData = quarters.map(quarter => ({
+  // 准备插入或更新的数据
+  const upsertData = quarters.map(quarter => ({
     quarter_name: quarter
   }));
   
-  // 插入新数据
-  if (insertData.length > 0) {
-    const { error: insertError } = await client
+  // 使用upsert方式保存数据，根据quarter_name字段更新或插入
+  if (upsertData.length > 0) {
+    const { error: upsertError } = await client
       .from('available_quarters')
-      .insert(insertData);
+      .upsert(upsertData, { onConflict: 'quarter_name' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting available quarters:', insertError);
+    if (upsertError) {
+      console.error('Error upserting available quarters:', upsertError);
       return false;
     }
   }
@@ -434,24 +391,14 @@ export const fetchCurrentQuarter = async (): Promise<string> => {
 export const saveCurrentQuarter = async (quarter: string): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
+  // 使用upsert方式保存数据，对于current_quarter表，我们只需要一条记录
+  const { error: upsertError } = await client
     .from('current_quarter')
-    .delete()
-    .neq('id', '');
+    .upsert({ quarter_name: quarter }, { onConflict: '' }) // 使用空字符串作为冲突目标，意味着总是更新或插入
+    .select();
   
-  if (deleteError) {
-    console.error('Error deleting current quarter:', deleteError);
-    return false;
-  }
-  
-  // 插入新数据
-  const { error: insertError } = await client
-    .from('current_quarter')
-    .insert({ quarter_name: quarter });
-  
-  if (insertError) {
-    console.error('Error inserting current quarter:', insertError);
+  if (upsertError) {
+    console.error('Error upserting current quarter:', upsertError);
     return false;
   }
   
@@ -477,30 +424,39 @@ export const fetchFactoryOwners = async (): Promise<string[]> => {
 export const saveFactoryOwners = async (owners: string[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先删除所有现有数据
-  const { error: deleteError } = await client
-    .from('factory_owners')
-    .delete()
-    .neq('id', '');
+  // 先获取现有工厂所有者列表
+  const existingOwners = await fetchFactoryOwners();
   
-  if (deleteError) {
-    console.error('Error deleting factory owners:', deleteError);
-    return false;
+  // 确定需要删除的工厂所有者
+  const ownersToDelete = existingOwners.filter(o => !owners.includes(o));
+  
+  // 删除不存在的工厂所有者
+  if (ownersToDelete.length > 0) {
+    const { error: deleteError } = await client
+      .from('factory_owners')
+      .delete()
+      .in('owner_name', ownersToDelete);
+    
+    if (deleteError) {
+      console.error('Error deleting factory owners:', deleteError);
+      return false;
+    }
   }
   
-  // 准备插入数据
-  const insertData = owners.map(owner => ({
+  // 准备插入或更新的数据
+  const upsertData = owners.map(owner => ({
     owner_name: owner
   }));
   
-  // 插入新数据
-  if (insertData.length > 0) {
-    const { error: insertError } = await client
+  // 使用upsert方式保存数据，根据owner_name字段更新或插入
+  if (upsertData.length > 0) {
+    const { error: upsertError } = await client
       .from('factory_owners')
-      .insert(insertData);
+      .upsert(upsertData, { onConflict: 'owner_name' })
+      .select();
     
-    if (insertError) {
-      console.error('Error inserting factory owners:', insertError);
+    if (upsertError) {
+      console.error('Error upserting factory owners:', upsertError);
       return false;
     }
   }

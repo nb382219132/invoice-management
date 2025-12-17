@@ -15,6 +15,14 @@ const getSupabaseClient = (): SupabaseClient => {
     
     console.log('Creating Supabase client with URL:', supabaseUrl);
     supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // 检查连接状态
+    supabase.auth.getSession().then(session => {
+      console.log('Supabase connection status:', session.error ? 'error' : 'connected');
+      if (session.error) {
+        console.error('Supabase connection error:', session.error);
+      }
+    });
   }
   return supabase;
 };
@@ -25,99 +33,168 @@ const getSupabaseClient = (): SupabaseClient => {
 export const subscribeToStores = (callback: (stores: StoreCompany[]) => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to stores changes...');
+  
   // 首次获取数据
-  fetchStores().then(callback);
+  fetchStores().then(stores => {
+    console.log('Initial stores data loaded:', stores.length, 'records');
+    callback(stores);
+  });
   
   // 订阅变化
-  return client
+  const channel = client
     .channel('stores-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, async () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, async (event) => {
+      console.log('Stores change event received:', event.eventType);
       const stores = await fetchStores();
+      console.log('Updated stores data:', stores.length, 'records');
       callback(stores);
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log('Stores channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // 订阅suppliers表的变化
 export const subscribeToSuppliers = (callback: (suppliers: SupplierEntity[]) => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to suppliers changes...');
+  
   // 首次获取数据
-  fetchSuppliers().then(callback);
+  fetchSuppliers().then(suppliers => {
+    console.log('Initial suppliers data loaded:', suppliers.length, 'records');
+    callback(suppliers);
+  });
   
   // 订阅变化
-  return client
+  const channel = client
     .channel('suppliers-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, async () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, async (event) => {
+      console.log('Suppliers change event received:', event.eventType);
       const suppliers = await fetchSuppliers();
+      console.log('Updated suppliers data:', suppliers.length, 'records');
       callback(suppliers);
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log('Suppliers channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // 订阅factory_owners表的变化
 export const subscribeToFactoryOwners = (callback: (factoryOwners: string[]) => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to factory_owners changes...');
+  
   // 首次获取数据
-  fetchFactoryOwners().then(callback);
+  fetchFactoryOwners().then(factoryOwners => {
+    console.log('Initial factoryOwners data loaded:', factoryOwners.length, 'records');
+    callback(factoryOwners);
+  });
   
   // 订阅变化
-  return client
+  const channel = client
     .channel('factory-owners-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, async () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, async (event) => {
+      console.log('FactoryOwners change event received:', event.eventType);
       const factoryOwners = await fetchFactoryOwners();
+      console.log('Updated factoryOwners data:', factoryOwners.length, 'records');
       callback(factoryOwners);
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log('FactoryOwners channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // 订阅invoices表的变化
 export const subscribeToInvoices = (callback: (invoices: InvoiceRecord[]) => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to invoices changes...');
+  
   // 首次获取数据
-  fetchInvoices().then(callback);
+  fetchInvoices().then(invoices => {
+    console.log('Initial invoices data loaded:', invoices.length, 'records');
+    callback(invoices);
+  });
   
   // 订阅变化
-  return client
+  const channel = client
     .channel('invoices-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, async () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, async (event) => {
+      console.log('Invoices change event received:', event.eventType);
       const invoices = await fetchInvoices();
+      console.log('Updated invoices data:', invoices.length, 'records');
       callback(invoices);
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log('Invoices channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // 订阅payments表的变化
 export const subscribeToPayments = (callback: (payments: PaymentRecord[]) => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to payments changes...');
+  
   // 首次获取数据
-  fetchPayments().then(callback);
+  fetchPayments().then(payments => {
+    console.log('Initial payments data loaded:', payments.length, 'records');
+    callback(payments);
+  });
   
   // 订阅变化
-  return client
+  const channel = client
     .channel('payments-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, async () => {
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, async (event) => {
+      console.log('Payments change event received:', event.eventType);
       const payments = await fetchPayments();
+      console.log('Updated payments data:', payments.length, 'records');
       callback(payments);
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log('Payments channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // 订阅季度相关数据的变化
 export const subscribeToQuarterData = (callback: () => void) => {
   const client = getSupabaseClient();
   
+  console.log('Subscribing to quarter data changes...');
+  
   // 订阅所有季度相关表的变化
-  return client
+  const channel = client
     .channel('quarter-channel')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'quarter_data' }, callback)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'available_quarters' }, callback)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'current_quarter' }, callback)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, callback)
-    .subscribe();
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'quarter_data' }, (event) => {
+      console.log('QuarterData change event received:', event.eventType);
+      callback();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'available_quarters' }, (event) => {
+      console.log('AvailableQuarters change event received:', event.eventType);
+      callback();
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'current_quarter' }, (event) => {
+      console.log('CurrentQuarter change event received:', event.eventType);
+      callback();
+    })
+    .subscribe((status) => {
+      console.log('Quarter channel subscription status:', status);
+    });
+  
+  return channel;
 };
 
 // SKU数据相关操作
@@ -465,7 +542,7 @@ export const saveFactoryOwners = async (owners: string[]): Promise<boolean> => {
 };
 
 // 从localStorage迁移数据到Supabase
-export const migrateDataFromLocalStorage = async (): Promise<boolean> => {
+export const migrateDataFromLocalStorage = async (force: boolean = false): Promise<boolean> => {
   try {
     // 从localStorage获取数据
     const storesJson = localStorage.getItem('stores');
@@ -530,6 +607,27 @@ export const migrateDataFromLocalStorage = async (): Promise<boolean> => {
     return allSuccess;
   } catch (error) {
     console.error('数据迁移失败:', error);
+    return false;
+  }
+};
+
+// 从备份恢复数据到Supabase（不管Supabase中是否已有数据）
+export const restoreDataFromBackup = async (): Promise<boolean> => {
+  try {
+    console.log('开始从备份恢复数据到Supabase...');
+    
+    // 强制迁移数据，不管Supabase中是否已有数据
+    const result = await migrateDataFromLocalStorage(true);
+    
+    if (result) {
+      console.log('数据恢复成功！');
+    } else {
+      console.error('数据恢复失败！');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('数据恢复失败:', error);
     return false;
   }
 };

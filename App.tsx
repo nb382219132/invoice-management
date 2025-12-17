@@ -17,6 +17,7 @@ import {
   saveCurrentQuarter,
   saveFactoryOwners,
   migrateDataFromLocalStorage,
+  restoreDataFromBackup,
   hasDataInSupabase,
   subscribeToStores,
   subscribeToSuppliers,
@@ -229,6 +230,32 @@ function App() {
     }
   };
   
+  // 从备份恢复数据
+  const handleRestoreData = async () => {
+    if (window.confirm('确定要从备份恢复数据吗？这将覆盖当前所有数据！')) {
+      try {
+        setIsLoading(true);
+        console.log('开始从备份恢复数据...');
+        
+        // 从备份恢复数据到Supabase
+        const result = await restoreDataFromBackup();
+        
+        if (result) {
+          // 恢复成功后，重新加载数据
+          await loadData();
+          alert('数据恢复成功！');
+        } else {
+          alert('数据恢复失败！');
+        }
+      } catch (error) {
+        console.error('恢复数据失败:', error);
+        alert('数据恢复失败！');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+  };
+  
   // 初始加载数据
   useEffect(() => {
     loadData();
@@ -283,7 +310,13 @@ function App() {
   // 保存数据到Supabase
   const saveAllData = async () => {
     try {
-      await Promise.all([
+      console.log('开始保存数据到Supabase...');
+      console.log('保存的stores数量:', stores.length);
+      console.log('保存的suppliers数量:', suppliers.length);
+      console.log('保存的invoices数量:', invoices.length);
+      console.log('保存的factoryOwners数量:', factoryOwners.length);
+      
+      const results = await Promise.all([
         saveStores(stores),
         saveSuppliers(suppliers),
         saveInvoices(invoices),
@@ -293,6 +326,8 @@ function App() {
         saveCurrentQuarter(currentQuarter),
         saveFactoryOwners(factoryOwners)
       ]);
+      
+      console.log('数据保存完成，结果:', results);
     } catch (error) {
       console.error('保存数据失败:', error);
     }
@@ -1532,6 +1567,10 @@ function App() {
             <button onClick={handleOpenAddSupplier} className="w-full flex items-center gap-3 p-3 rounded-lg text-left bg-blue-50 text-blue-700 hover:bg-blue-100">
               <Plus size={20} />
               <span>新增工厂</span>
+            </button>
+            <button onClick={handleRestoreData} className="w-full flex items-center gap-3 p-3 rounded-lg text-left bg-amber-50 text-amber-700 hover:bg-amber-100">
+              <RefreshCw size={20} />
+              <span>恢复数据</span>
             </button>
           </div>
         </div>

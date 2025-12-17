@@ -14,7 +14,18 @@ const getSupabaseClient = (): SupabaseClient => {
     }
     
     console.log('Creating Supabase client with URL:', supabaseUrl);
-    supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // 创建Supabase客户端，并配置连接池和超时
+    supabase = createClient(supabaseUrl, supabaseKey, {
+      db: {
+        pool: 5, // 连接池大小
+        timeout: 10000, // 连接超时时间（毫秒）
+      },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    });
     
     // 检查连接状态
     supabase.auth.getSession().then(session => {
@@ -560,6 +571,8 @@ export const saveFactoryOwners = async (owners: string[]): Promise<boolean> => {
 // 从localStorage迁移数据到Supabase
 export const migrateDataFromLocalStorage = async (force: boolean = false): Promise<boolean> => {
   try {
+    console.log('开始从localStorage迁移数据到Supabase...');
+    
     // 从localStorage获取数据
     const storesJson = localStorage.getItem('stores');
     const suppliersJson = localStorage.getItem('suppliers');
@@ -584,43 +597,43 @@ export const migrateDataFromLocalStorage = async (force: boolean = false): Promi
     const factoryOwnersJson = localStorage.getItem('factoryOwners');
     
     const quarterData = quarterDataJson ? JSON.parse(quarterDataJson) : {};
-    const availableQuarters = availableQuartersJson ? JSON.parse(availableQuartersJson) : [];
-    const factoryOwners = factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [];
+    const availableQuarters = availableQuartersJson ? JSON.parse(availableQuartersJson) : ['2025Q3']; // 默认季度
+    const factoryOwners = factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [...new Set(suppliers.map(s => s.owner))]; // 从供应商中提取所有者
     
-    console.log('开始从localStorage迁移数据到Supabase...');
     console.log('迁移数据量:', {
       stores: stores.length,
       suppliers: suppliers.length,
       invoices: invoices.length,
-      payments: payments.length
+      payments: payments.length,
+      availableQuarters: availableQuarters.length,
+      factoryOwners: factoryOwners.length
     });
     
-    // 保存数据到Supabase
-    const results = await Promise.all([
+    // 保存数据到Supabase，设置超时时间
+    const client = getSupabaseClient();
+    
+    // 保存核心数据
+    await Promise.all([
       saveStores(stores),
       saveSuppliers(suppliers),
       saveInvoices(invoices),
       savePayments(payments),
-      saveQuarterData(quarterData),
-      saveAvailableQuarters(availableQuarters),
       saveFactoryOwners(factoryOwners)
     ]);
     
-    // 保存当前季度
-    if (currentQuarter) {
-      results.push(await saveCurrentQuarter(currentQuarter));
+    // 保存季度数据
+    await Promise.all([
+      saveAvailableQuarters(availableQuarters),
+      saveCurrentQuarter(currentQuarter || '2025Q3')
+    ]);
+    
+    // 保存季度数据（如果有）
+    if (Object.keys(quarterData).length > 0) {
+      await saveQuarterData(quarterData);
     }
     
-    // 检查所有操作是否成功
-    const allSuccess = results.every(result => result === true);
-    
-    if (allSuccess) {
-      console.log('数据迁移成功！');
-    } else {
-      console.error('部分数据迁移失败！');
-    }
-    
-    return allSuccess;
+    console.log('数据迁移成功！');
+    return true;
   } catch (error) {
     console.error('数据迁移失败:', error);
     return false;
@@ -656,26 +669,21 @@ export const hasDataInSupabase = async (): Promise<boolean> => {
   try {
     const client = getSupabaseClient();
     
-    // 检查多个表，只要有一个表有数据就认为已有数据
-    const tables = ['stores', 'suppliers', 'invoices', 'available_quarters'];
+    // 只检查stores表，因为它是核心数据
+    // 减少不必要的请求，提高性能
+    const { data, error } = await client
+      .from('stores')
+      .select('id')
+      .limit(1)
+      .timeout(5000); // 设置查询超时
     
-    for (const table of tables) {
-      const { data, error } = await client
-        .from(table)
-        .select('id')
-        .limit(1);
-      
-      if (error) {
-        console.error(`Error checking ${table} existence:`, error);
-        continue;
-      }
-      
-      if (data.length > 0) {
-        return true;
-      }
+    if (error) {
+      console.error('Error checking stores existence:', error);
+      return false;
     }
     
-    return false;
+    console.log('hasDataInSupabase result:', data.length > 0);
+    return data.length > 0;
   } catch (error) {
     console.error('Error checking data existence:', error);
     return false;

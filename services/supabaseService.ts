@@ -409,39 +409,33 @@ export const fetchAvailableQuarters = async (): Promise<string[]> => {
 export const saveAvailableQuarters = async (quarters: string[]): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 先获取现有季度列表
-  const existingQuarters = await fetchAvailableQuarters();
+  // 对于available_quarters表，我们直接删除所有现有记录，然后插入新记录
+  // 这样可以避免id字段类型不匹配的问题
   
-  // 确定需要删除的季度
-  const quartersToDelete = existingQuarters.filter(q => !quarters.includes(q));
+  // 先删除所有现有记录
+  const { error: deleteError } = await client
+    .from('available_quarters')
+    .delete()
+    .neq('id', '');
   
-  // 删除不存在的季度
-  if (quartersToDelete.length > 0) {
-    const { error: deleteError } = await client
-      .from('available_quarters')
-      .delete()
-      .in('quarter_name', quartersToDelete);
-    
-    if (deleteError) {
-      console.error('Error deleting available quarters:', deleteError);
-      return false;
-    }
+  if (deleteError) {
+    console.error('Error deleting available quarters:', deleteError);
+    return false;
   }
   
-  // 准备插入或更新的数据
-  const upsertData = quarters.map(quarter => ({
+  // 准备插入数据
+  const insertData = quarters.map(quarter => ({
     quarter_name: quarter
   }));
   
-  // 使用upsert方式保存数据，根据quarter_name字段更新或插入
-  if (upsertData.length > 0) {
-    const { error: upsertError } = await client
+  // 插入新数据
+  if (insertData.length > 0) {
+    const { error: insertError } = await client
       .from('available_quarters')
-      .upsert(upsertData, { onConflict: 'quarter_name' })
-      .select();
+      .insert(insertData);
     
-    if (upsertError) {
-      console.error('Error upserting available quarters:', upsertError);
+    if (insertError) {
+      console.error('Error inserting available quarters:', insertError);
       return false;
     }
   }
@@ -468,14 +462,25 @@ export const fetchCurrentQuarter = async (): Promise<string> => {
 export const saveCurrentQuarter = async (quarter: string): Promise<boolean> => {
   const client = getSupabaseClient();
   
-  // 使用upsert方式保存数据，对于current_quarter表，我们只需要一条记录
-  const { error: upsertError } = await client
+  // 对于current_quarter表，我们只需要一条记录
+  // 先删除所有现有记录
+  const { error: deleteError } = await client
     .from('current_quarter')
-    .upsert({ quarter_name: quarter }, { onConflict: '' }) // 使用空字符串作为冲突目标，意味着总是更新或插入
-    .select();
+    .delete()
+    .neq('id', '');
   
-  if (upsertError) {
-    console.error('Error upserting current quarter:', upsertError);
+  if (deleteError) {
+    console.error('Error deleting current quarter:', deleteError);
+    return false;
+  }
+  
+  // 插入新记录
+  const { error: insertError } = await client
+    .from('current_quarter')
+    .insert({ quarter_name: quarter });
+  
+  if (insertError) {
+    console.error('Error inserting current quarter:', insertError);
     return false;
   }
   

@@ -1,12 +1,31 @@
 import { useState, useEffect } from 'react';
-// 只导入订阅相关的函数，其他函数使用带有别名的导入
+// 导入所有需要的函数
 import {
   subscribeToStores,
   subscribeToSuppliers,
   subscribeToInvoices,
   subscribeToPayments,
   subscribeToQuarterData,
-  subscribeToFactoryOwners
+  subscribeToFactoryOwners,
+  fetchStores,
+  fetchSuppliers,
+  fetchInvoices,
+  fetchPayments,
+  fetchQuarterData,
+  fetchAvailableQuarters,
+  fetchCurrentQuarter,
+  fetchFactoryOwners,
+  saveStores,
+  saveSuppliers,
+  saveInvoices,
+  savePayments,
+  saveQuarterData,
+  saveAvailableQuarters,
+  saveCurrentQuarter,
+  saveFactoryOwners,
+  migrateDataFromLocalStorage,
+  restoreDataFromBackup,
+  hasDataInSupabase
 } from './services/supabaseService';
 import { 
   LayoutDashboard, 
@@ -159,20 +178,12 @@ function App() {
       // 检查Supabase连接状态
       try {
         console.log('检查Supabase连接...');
-<<<<<<< HEAD
-        const hasData = await hasDataInSupabaseCheck();
-=======
         const hasData = await hasDataInSupabase();
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         console.log('Supabase有数据:', hasData);
         
         if (!hasData) {
           // 如果没有数据，从localStorage迁移
-<<<<<<< HEAD
-          const migrated = await migrateDataFromLocalStorageLocal();
-=======
           const migrated = await migrateDataFromLocalStorage();
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
           
           // 如果迁移成功，继续加载数据
           if (migrated) {
@@ -208,16 +219,6 @@ function App() {
           currentQuarterData,
           factoryOwnersData
         ] = await Promise.all([
-<<<<<<< HEAD
-          fetchStoresSupabase(),
-          fetchSuppliersSupabase(),
-          fetchInvoicesSupabase(),
-          fetchPaymentsSupabase(),
-          fetchQuarterDataSupabase(),
-          fetchAvailableQuartersSupabase(),
-          fetchCurrentQuarterSupabase(),
-          fetchFactoryOwnersSupabase()
-=======
           fetchStores(),
           fetchSuppliers(),
           fetchInvoices(),
@@ -226,7 +227,6 @@ function App() {
           fetchAvailableQuarters(),
           fetchCurrentQuarter(),
           fetchFactoryOwners()
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         ]);
         
         // 更新状态
@@ -257,19 +257,16 @@ function App() {
           } catch (saveError) {
             console.error('保存默认数据到Supabase失败:', saveError);
           }
-<<<<<<< HEAD
           
           // 保存到localStorage作为备份
           try {
-            await Promise.all([
-              saveStoresLocal(MOCK_STORES),
-              saveSuppliersLocal(MOCK_SUPPLIERS),
-              saveInvoicesLocal(MOCK_INVOICES),
-              savePaymentsLocal(MOCK_PAYMENTS),
-              saveCurrentQuarterLocal('2025Q3'),
-              saveAvailableQuartersLocal(['2025Q3']),
-              saveFactoryOwnersLocal([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
-            ]);
+            localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
+            localStorage.setItem('suppliers', JSON.stringify(MOCK_SUPPLIERS));
+            localStorage.setItem('invoices', JSON.stringify(MOCK_INVOICES));
+            localStorage.setItem('payments', JSON.stringify(MOCK_PAYMENTS));
+            localStorage.setItem('currentQuarter', '2025Q3');
+            localStorage.setItem('availableQuarters', JSON.stringify(['2025Q3']));
+            localStorage.setItem('factoryOwners', JSON.stringify([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]));
             console.log('默认数据保存到localStorage作为备份成功！');
           } catch (localError) {
             console.error('保存到localStorage失败:', localError);
@@ -277,22 +274,18 @@ function App() {
         } else {
           // 从Supabase成功加载数据，保存到localStorage作为备份
           try {
-            await Promise.all([
-              saveStoresLocal(storesData),
-              saveSuppliersLocal(suppliersData),
-              saveInvoicesLocal(invoicesData),
-              savePaymentsLocal(paymentsData),
-              saveQuarterDataLocal(quarterDataData),
-              saveAvailableQuartersLocal(availableQuartersData),
-              saveCurrentQuarterLocal(currentQuarterData),
-              saveFactoryOwnersLocal(factoryOwnersData)
-            ]);
+            localStorage.setItem('stores', JSON.stringify(storesData));
+            localStorage.setItem('suppliers', JSON.stringify(suppliersData));
+            localStorage.setItem('invoices', JSON.stringify(invoicesData));
+            localStorage.setItem('payments', JSON.stringify(paymentsData));
+            localStorage.setItem('quarterData', JSON.stringify(quarterDataData));
+            localStorage.setItem('availableQuarters', JSON.stringify(availableQuartersData));
+            localStorage.setItem('currentQuarter', currentQuarterData);
+            localStorage.setItem('factoryOwners', JSON.stringify(factoryOwnersData));
             console.log('Supabase数据保存到localStorage作为备份成功！');
           } catch (localError) {
             console.error('保存到localStorage失败:', localError);
           }
-=======
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
         }
       } catch (supabaseError) {
         console.error('Supabase连接或操作失败:', supabaseError);
@@ -353,20 +346,9 @@ function App() {
         }
       }
       
-<<<<<<< HEAD
       // 移除循环调用，因为saveAllData会触发useEffect，导致无限循环
       // loadData的职责是加载数据，而不是保存数据
       // 数据保存由useEffect和用户操作触发
-=======
-      // 如果有Supabase连接，尝试保存数据
-      if (hasSupabaseConnection) {
-        try {
-          await saveAllData();
-        } catch (saveError) {
-          console.error('保存数据到Supabase失败:', saveError);
-        }
-      }
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
     } catch (error) {
       console.error('加载数据失败:', error);
       // 加载失败时使用默认数据
@@ -389,13 +371,13 @@ function App() {
       
       // 保存默认数据到Supabase
       await Promise.all([
-        saveStoresSupabase(MOCK_STORES),
-        saveSuppliersSupabase(MOCK_SUPPLIERS),
-        saveInvoicesSupabase(MOCK_INVOICES),
-        savePaymentsSupabase(MOCK_PAYMENTS),
-        saveAvailableQuartersSupabase(['2025Q3']),
-        saveCurrentQuarterSupabase('2025Q3'),
-        saveFactoryOwnersSupabase([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
+        saveStores(MOCK_STORES),
+        saveSuppliers(MOCK_SUPPLIERS),
+        saveInvoices(MOCK_INVOICES),
+        savePayments(MOCK_PAYMENTS),
+        saveAvailableQuarters(['2025Q3']),
+        saveCurrentQuarter('2025Q3'),
+        saveFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
       ]);
       
       console.log('默认数据保存成功！');
@@ -460,9 +442,9 @@ function App() {
         availableQuartersData,
         currentQuarterData
       ] = await Promise.all([
-        fetchQuarterDataSupabase(),
-        fetchAvailableQuartersSupabase(),
-        fetchCurrentQuarterSupabase()
+        fetchQuarterData(),
+        fetchAvailableQuarters(),
+        fetchCurrentQuarter()
       ]);
       
       setQuarterData(quarterDataData);
@@ -492,7 +474,6 @@ function App() {
       
       // 检查是否有数据需要保存
       if (stores.length === 0 && suppliers.length === 0 && invoices.length === 0 && payments.length === 0) {
-<<<<<<< HEAD
         console.log('没有数据需要保存');
         return;
       }
@@ -500,14 +481,14 @@ function App() {
       try {
         // 优先尝试保存到Supabase
         const results = await Promise.all([
-          saveStoresSupabase(stores),
-          saveSuppliersSupabase(suppliers),
-          saveInvoicesSupabase(invoices),
-          savePaymentsSupabase(payments),
-          saveQuarterDataSupabase(quarterData),
-          saveAvailableQuartersSupabase(availableQuarters),
-          saveCurrentQuarterSupabase(currentQuarter),
-          saveFactoryOwnersSupabase(factoryOwners)
+          saveStores(stores),
+          saveSuppliers(suppliers),
+          saveInvoices(invoices),
+          savePayments(payments),
+          saveQuarterData(quarterData),
+          saveAvailableQuarters(availableQuarters),
+          saveCurrentQuarter(currentQuarter),
+          saveFactoryOwners(factoryOwners)
         ]);
         
         console.log('数据成功保存到Supabase！结果:', results);
@@ -519,16 +500,14 @@ function App() {
           // 如果Supabase保存失败，尝试保存到localStorage作为临时备份
           try {
             console.log('尝试保存到localStorage作为临时备份...');
-            await Promise.all([
-              saveStoresLocal(stores),
-              saveSuppliersLocal(suppliers),
-              saveInvoicesLocal(invoices),
-              savePaymentsLocal(payments),
-              saveQuarterDataLocal(quarterData),
-              saveAvailableQuartersLocal(availableQuarters),
-              saveCurrentQuarterLocal(currentQuarter),
-              saveFactoryOwnersLocal(factoryOwners)
-            ]);
+            localStorage.setItem('stores', JSON.stringify(stores));
+            localStorage.setItem('suppliers', JSON.stringify(suppliers));
+            localStorage.setItem('invoices', JSON.stringify(invoices));
+            localStorage.setItem('payments', JSON.stringify(payments));
+            localStorage.setItem('quarterData', JSON.stringify(quarterData));
+            localStorage.setItem('availableQuarters', JSON.stringify(availableQuarters));
+            localStorage.setItem('currentQuarter', currentQuarter);
+            localStorage.setItem('factoryOwners', JSON.stringify(factoryOwners));
             console.log('数据保存到localStorage作为临时备份成功！');
           } catch (localError) {
             console.error('保存到localStorage也失败:', localError);
@@ -539,43 +518,18 @@ function App() {
         // 如果Supabase连接失败，保存到localStorage作为临时备份
         try {
           console.log('保存到Supabase失败，使用localStorage作为临时备份...');
-          await Promise.all([
-            saveStoresLocal(stores),
-            saveSuppliersLocal(suppliers),
-            saveInvoicesLocal(invoices),
-            savePaymentsLocal(payments),
-            saveQuarterDataLocal(quarterData),
-            saveAvailableQuartersLocal(availableQuarters),
-            saveCurrentQuarterLocal(currentQuarter),
-            saveFactoryOwnersLocal(factoryOwners)
-          ]);
+          localStorage.setItem('stores', JSON.stringify(stores));
+          localStorage.setItem('suppliers', JSON.stringify(suppliers));
+          localStorage.setItem('invoices', JSON.stringify(invoices));
+          localStorage.setItem('payments', JSON.stringify(payments));
+          localStorage.setItem('quarterData', JSON.stringify(quarterData));
+          localStorage.setItem('availableQuarters', JSON.stringify(availableQuarters));
+          localStorage.setItem('currentQuarter', currentQuarter);
+          localStorage.setItem('factoryOwners', JSON.stringify(factoryOwners));
           console.log('数据保存到localStorage作为临时备份成功！');
         } catch (localError) {
           console.error('保存到localStorage也失败:', localError);
         }
-=======
-        console.log('没有数据需要保存到Supabase');
-        return;
-      }
-      
-      const results = await Promise.all([
-        saveStores(stores),
-        saveSuppliers(suppliers),
-        saveInvoices(invoices),
-        savePayments(payments),
-        saveQuarterData(quarterData),
-        saveAvailableQuarters(availableQuarters),
-        saveCurrentQuarter(currentQuarter),
-        saveFactoryOwners(factoryOwners)
-      ]);
-      
-      console.log('数据保存完成，结果:', results);
-      
-      // 检查是否有保存失败的结果
-      const failedResults = results.filter(result => result === false);
-      if (failedResults.length > 0) {
-        console.error(`${failedResults.length}项数据保存失败`);
->>>>>>> b0afa0b414f52abd35779447be28c980ed7dc208
       }
     } catch (error) {
       console.error('保存数据失败:', error);

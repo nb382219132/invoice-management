@@ -1,24 +1,6 @@
 import { useState, useEffect } from 'react';
+// 只导入订阅相关的函数，其他函数使用带有别名的导入
 import {
-  fetchStores,
-  fetchSuppliers,
-  fetchInvoices,
-  fetchPayments,
-  fetchQuarterData,
-  fetchAvailableQuarters,
-  fetchCurrentQuarter,
-  fetchFactoryOwners,
-  saveStores,
-  saveSuppliers,
-  saveInvoices,
-  savePayments,
-  saveQuarterData,
-  saveAvailableQuarters,
-  saveCurrentQuarter,
-  saveFactoryOwners,
-  migrateDataFromLocalStorage,
-  restoreDataFromBackup,
-  hasDataInSupabase,
   subscribeToStores,
   subscribeToSuppliers,
   subscribeToInvoices,
@@ -256,6 +238,39 @@ function App() {
           } catch (saveError) {
             console.error('保存默认数据到Supabase失败:', saveError);
           }
+          
+          // 保存到localStorage作为备份
+          try {
+            await Promise.all([
+              saveStoresLocal(MOCK_STORES),
+              saveSuppliersLocal(MOCK_SUPPLIERS),
+              saveInvoicesLocal(MOCK_INVOICES),
+              savePaymentsLocal(MOCK_PAYMENTS),
+              saveCurrentQuarterLocal('2025Q3'),
+              saveAvailableQuartersLocal(['2025Q3']),
+              saveFactoryOwnersLocal([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
+            ]);
+            console.log('默认数据保存到localStorage作为备份成功！');
+          } catch (localError) {
+            console.error('保存到localStorage失败:', localError);
+          }
+        } else {
+          // 从Supabase成功加载数据，保存到localStorage作为备份
+          try {
+            await Promise.all([
+              saveStoresLocal(storesData),
+              saveSuppliersLocal(suppliersData),
+              saveInvoicesLocal(invoicesData),
+              savePaymentsLocal(paymentsData),
+              saveQuarterDataLocal(quarterDataData),
+              saveAvailableQuartersLocal(availableQuartersData),
+              saveCurrentQuarterLocal(currentQuarterData),
+              saveFactoryOwnersLocal(factoryOwnersData)
+            ]);
+            console.log('Supabase数据保存到localStorage作为备份成功！');
+          } catch (localError) {
+            console.error('保存到localStorage失败:', localError);
+          }
         }
       } catch (supabaseError) {
         console.error('Supabase连接或操作失败:', supabaseError);
@@ -316,14 +331,9 @@ function App() {
         }
       }
       
-      // 如果有Supabase连接，尝试保存数据
-      if (hasSupabaseConnection) {
-        try {
-          await saveAllData();
-        } catch (saveError) {
-          console.error('保存数据到Supabase失败:', saveError);
-        }
-      }
+      // 移除循环调用，因为saveAllData会触发useEffect，导致无限循环
+      // loadData的职责是加载数据，而不是保存数据
+      // 数据保存由useEffect和用户操作触发
     } catch (error) {
       console.error('加载数据失败:', error);
       // 加载失败时使用默认数据
@@ -346,13 +356,13 @@ function App() {
       
       // 保存默认数据到Supabase
       await Promise.all([
-        saveStores(MOCK_STORES),
-        saveSuppliers(MOCK_SUPPLIERS),
-        saveInvoices(MOCK_INVOICES),
-        savePayments(MOCK_PAYMENTS),
-        saveAvailableQuarters(['2025Q3']),
-        saveCurrentQuarter('2025Q3'),
-        saveFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
+        saveStoresSupabase(MOCK_STORES),
+        saveSuppliersSupabase(MOCK_SUPPLIERS),
+        saveInvoicesSupabase(MOCK_INVOICES),
+        savePaymentsSupabase(MOCK_PAYMENTS),
+        saveAvailableQuartersSupabase(['2025Q3']),
+        saveCurrentQuarterSupabase('2025Q3'),
+        saveFactoryOwnersSupabase([...new Set(MOCK_SUPPLIERS.map(s => s.owner))])
       ]);
       
       console.log('默认数据保存成功！');
@@ -417,9 +427,9 @@ function App() {
         availableQuartersData,
         currentQuarterData
       ] = await Promise.all([
-        fetchQuarterData(),
-        fetchAvailableQuarters(),
-        fetchCurrentQuarter()
+        fetchQuarterDataSupabase(),
+        fetchAvailableQuartersSupabase(),
+        fetchCurrentQuarterSupabase()
       ]);
       
       setQuarterData(quarterDataData);

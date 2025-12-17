@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   fetchStores,
   fetchSuppliers,
@@ -17,7 +17,12 @@ import {
   saveCurrentQuarter,
   saveFactoryOwners,
   migrateDataFromLocalStorage,
-  hasDataInSupabase
+  hasDataInSupabase,
+  subscribeToStores,
+  subscribeToSuppliers,
+  subscribeToInvoices,
+  subscribeToPayments,
+  subscribeToQuarterData
 } from './services/supabaseService';
 import { 
   LayoutDashboard, 
@@ -160,71 +165,117 @@ function App() {
     }
   });
 
-  // 从Supabase加载数据
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
-        
-        // 检查Supabase是否已有数据
-        const hasData = await hasDataInSupabase();
-        
-        if (!hasData) {
-          // 如果没有数据，从localStorage迁移
-          await migrateDataFromLocalStorage();
-        }
-        
-        // 从Supabase加载所有数据
-        const [
-          storesData,
-          suppliersData,
-          invoicesData,
-          paymentsData,
-          quarterDataData,
-          availableQuartersData,
-          currentQuarterData,
-          factoryOwnersData
-        ] = await Promise.all([
-          fetchStores(),
-          fetchSuppliers(),
-          fetchInvoices(),
-          fetchPayments(),
-          fetchQuarterData(),
-          fetchAvailableQuarters(),
-          fetchCurrentQuarter(),
-          fetchFactoryOwners()
-        ]);
-        
-        // 更新状态
-        setStores(storesData);
-        setSuppliers(suppliersData);
-        setInvoices(invoicesData);
-        setPayments(paymentsData);
-        setQuarterData(quarterDataData);
-        setAvailableQuarters(availableQuartersData);
-        setCurrentQuarter(currentQuarterData);
-        setFactoryOwners(factoryOwnersData);
-        
-        // 只有当所有核心表都没有数据时，才使用默认值
-        if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
-          setStores(MOCK_STORES);
-          setSuppliers(MOCK_SUPPLIERS);
-          setInvoices(MOCK_INVOICES);
-          setPayments(MOCK_PAYMENTS);
-        }
-      } catch (error) {
-        console.error('加载数据失败:', error);
-        // 加载失败时使用默认数据
+  // 从Supabase加载数据的函数
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      
+      // 检查Supabase是否已有数据
+      const hasData = await hasDataInSupabase();
+      
+      if (!hasData) {
+        // 如果没有数据，从localStorage迁移
+        await migrateDataFromLocalStorage();
+      }
+      
+      // 从Supabase加载所有数据
+      const [
+        storesData,
+        suppliersData,
+        invoicesData,
+        paymentsData,
+        quarterDataData,
+        availableQuartersData,
+        currentQuarterData,
+        factoryOwnersData
+      ] = await Promise.all([
+        fetchStores(),
+        fetchSuppliers(),
+        fetchInvoices(),
+        fetchPayments(),
+        fetchQuarterData(),
+        fetchAvailableQuarters(),
+        fetchCurrentQuarter(),
+        fetchFactoryOwners()
+      ]);
+      
+      // 更新状态
+      setStores(storesData);
+      setSuppliers(suppliersData);
+      setInvoices(invoicesData);
+      setPayments(paymentsData);
+      setQuarterData(quarterDataData);
+      setAvailableQuarters(availableQuartersData);
+      setCurrentQuarter(currentQuarterData);
+      setFactoryOwners(factoryOwnersData);
+      
+      // 只有当所有核心表都没有数据时，才使用默认值
+      if (storesData.length === 0 && suppliersData.length === 0 && invoicesData.length === 0 && availableQuartersData.length === 0) {
         setStores(MOCK_STORES);
         setSuppliers(MOCK_SUPPLIERS);
         setInvoices(MOCK_INVOICES);
         setPayments(MOCK_PAYMENTS);
-      } finally {
-        setIsLoading(false);
       }
-    };
-    
+    } catch (error) {
+      console.error('加载数据失败:', error);
+      // 加载失败时使用默认数据
+      setStores(MOCK_STORES);
+      setSuppliers(MOCK_SUPPLIERS);
+      setInvoices(MOCK_INVOICES);
+      setPayments(MOCK_PAYMENTS);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // 初始加载数据
+  useEffect(() => {
     loadData();
+  }, []);
+  
+  // 使用实时订阅替代定期轮询
+  useEffect(() => {
+    // 订阅stores变化
+    const storesSubscription = subscribeToStores(setStores);
+    
+    // 订阅suppliers变化
+    const suppliersSubscription = subscribeToSuppliers(setSuppliers);
+    
+    // 订阅invoices变化
+    const invoicesSubscription = subscribeToInvoices(setInvoices);
+    
+    // 订阅payments变化
+    const paymentsSubscription = subscribeToPayments(setPayments);
+    
+    // 订阅季度相关数据变化
+    const quarterSubscription = subscribeToQuarterData(async () => {
+      // 当季度相关数据变化时，重新加载所有季度相关数据
+      const [
+        quarterDataData,
+        availableQuartersData,
+        currentQuarterData,
+        factoryOwnersData
+      ] = await Promise.all([
+        fetchQuarterData(),
+        fetchAvailableQuarters(),
+        fetchCurrentQuarter(),
+        fetchFactoryOwners()
+      ]);
+      
+      setQuarterData(quarterDataData);
+      setAvailableQuarters(availableQuartersData);
+      setCurrentQuarter(currentQuarterData);
+      setFactoryOwners(factoryOwnersData);
+    });
+    
+    // 组件卸载时取消所有订阅
+    return () => {
+      storesSubscription.unsubscribe();
+      suppliersSubscription.unsubscribe();
+      invoicesSubscription.unsubscribe();
+      paymentsSubscription.unsubscribe();
+      quarterSubscription.unsubscribe();
+    };
   }, []);
   
   // 保存数据到Supabase
@@ -342,9 +393,7 @@ function App() {
     suppliers.reduce((acc, s) => {
       const used = getSupplierInvoicedTotal(s.id);
       const remaining = Math.max(0, s.quarterlyLimit - used);
-      if (!acc[s.owner]) {
-        acc[s.owner] = 0;
-      }
+      if (!acc[s.owner]) acc[s.owner] = 0;
       acc[s.owner] += remaining;
       return acc;
     }, {} as Record<string, number>)
@@ -1309,882 +1358,658 @@ function App() {
         <ModalBackdrop title={activeModal === 'addSupplier' ? "添加工厂及开票主体" : "编辑开票主体"} onClose={() => setActiveModal(null)}>
           <div className="space-y-4">
              {/* Factory Section - Only show for Add mode or if creating new */}
-             {activeModal === 'addSupplier' && (
-             <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-               <label className="text-xs font-bold text-indigo-700 uppercase mb-2 block flex items-center gap-1">
-                  <User size={12}/> 1. 所属工厂 (法人)
-               </label>
-               
-               <div className="flex gap-2 mb-2 text-xs">
-                  <button 
-                    onClick={() => { setIsNewFactory(true); setSupplierForm({...supplierForm, owner: ''}); }}
-                    className={`flex-1 py-1.5 rounded border transition-colors ${isNewFactory ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                  >
-                    新增工厂
-                  </button>
-                  <button 
-                    onClick={() => setIsNewFactory(false)}
-                    className={`flex-1 py-1.5 rounded border transition-colors ${!isNewFactory ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-                  >
-                    选择已有
-                  </button>
-               </div>
-
-               {isNewFactory ? (
-                  <input 
-                    className="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500 outline-none" 
-                    placeholder="输入工厂负责人姓名 (法人)" 
-                    value={supplierForm.owner} 
-                    onChange={e => setSupplierForm({...supplierForm, owner: e.target.value})} 
-                    autoFocus
-                  />
-               ) : (
-                  <SearchableSelect
-                     options={uniqueOwners.map(owner => ({ value: owner, label: owner }))}
-                     value={supplierForm.owner}
-                     onChange={val => setSupplierForm({...supplierForm, owner: val})}
-                     placeholder="搜索或选择现有工厂"
-                  />
-               )}
-             </div>
-             )}
-
-             {/* Entity Section */}
-             <div className="bg-white p-1">
-                <label className="text-xs font-bold text-slate-500 uppercase mb-2 block flex items-center gap-1">
-                  <Building2 size={12}/> {activeModal === 'addSupplier' ? '2. 开票主体 (公司/个体户)' : '开票主体信息'}
-                </label>
-                
-                <div className="space-y-3">
-                    <div>
-                       <label className="text-[10px] text-slate-400 mb-0.5 block">营业执照名称</label>
-                       <input 
-                         className="w-full p-2 border rounded text-sm" 
-                         placeholder="公司名称" 
-                         value={supplierForm.name} 
-                         onChange={e => setSupplierForm({...supplierForm, name: e.target.value})} 
-                       />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                         <label className="text-[10px] text-slate-400 mb-0.5 block">主体类型</label>
-                         <SearchableSelect
-                            options={[
-                              { value: EntityType.INDIVIDUAL, label: EntityType.INDIVIDUAL },
-                              { value: EntityType.LARGE_INDIVIDUAL, label: EntityType.LARGE_INDIVIDUAL },
-                              { value: EntityType.COMPANY, label: EntityType.COMPANY },
-                              { value: EntityType.GENERAL, label: EntityType.GENERAL }
-                            ]}
-                            value={supplierForm.type}
-                            onChange={val => {
-                              const selectedType = val as EntityType;
-                              let defaultLimit = supplierForm.limit;
-                              
-                              // Set default limit based on entity type
-                              if (selectedType === EntityType.LARGE_INDIVIDUAL) {
-                                defaultLimit = 1000000;
-                              } else if (selectedType === EntityType.INDIVIDUAL) {
-                                defaultLimit = 280000;
-                              } else if (selectedType === EntityType.COMPANY) {
-                                defaultLimit = 280000;
-                              } else if (selectedType === EntityType.GENERAL) {
-                                defaultLimit = 280000;
-                              }
-                              
-                              setSupplierForm({...supplierForm, type: selectedType, limit: defaultLimit});
-                            }}
-                            placeholder="选择类型"
-                         />
-                      </div>
-                      <div>
-                          <label className="text-[10px] text-slate-400 mb-0.5 block">季度限额 (元)</label>
-                          <input 
-                            className="w-full p-2 border rounded text-sm" 
-                            type="number" 
-                            placeholder={supplierForm.type === EntityType.LARGE_INDIVIDUAL ? "1000000" : "280000"} 
-                            value={supplierForm.limit} 
-                            onChange={e => setSupplierForm({...supplierForm, limit: parseFloat(e.target.value)})} 
-                          />
-                      </div>
-                    </div>
-                </div>
-             </div>
+            {activeModal === 'addSupplier' && (
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">工厂负责人</label>
+                <SearchableSelect
+                  options={factoryOwners.map(owner => ({ value: owner, label: owner }))}
+                  value={supplierForm.owner}
+                  onChange={(val) => setSupplierForm({...supplierForm, owner: val || ''})}
+                  placeholder="选择现有工厂或直接输入新工厂名称"
+                  allowCustomValues
+                />
+              </div>
+            )}
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">开票主体名称</label>
+              <input className="w-full p-2 border rounded" placeholder="开票主体名称" value={supplierForm.name} onChange={e => setSupplierForm({...supplierForm, name: e.target.value})} />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">开票主体类型</label>
+              <SearchableSelect
+                options={[
+                  { value: EntityType.INDIVIDUAL, label: EntityType.INDIVIDUAL },
+                  { value: EntityType.ENTERPRISE, label: EntityType.ENTERPRISE }
+                ]}
+                value={supplierForm.type}
+                onChange={val => setSupplierForm({...supplierForm, type: val as EntityType})}
+                placeholder="选择类型"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">季度限额 (元)</label>
+              <input className="w-full p-2 border rounded" type="number" placeholder="季度限额" value={supplierForm.limit} onChange={e => setSupplierForm({...supplierForm, limit: parseInt(e.target.value) || 280000})} />
+            </div>
+            <button onClick={handleSaveSupplier} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">确认{activeModal === 'addSupplier' ? '添加' : '保存'}</button>
           </div>
-          <button onClick={handleSaveSupplier} className="w-full mt-4 bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm">确认{activeModal === 'addSupplier' ? '添加' : '保存'}</button>
         </ModalBackdrop>
       )}
 
       {activeModal === 'editOwner' && (
-          <ModalBackdrop title="修改" onClose={() => setActiveModal(null)}>
-             <input 
-                className="w-full p-2 border rounded text-sm" 
-                placeholder="新的负责人姓名" 
-                value={ownerRenameForm.newName} 
-                onChange={e => setOwnerRenameForm({...ownerRenameForm, newName: e.target.value})} 
-                autoFocus
-             />
-             <div className="text-xs text-orange-600 bg-orange-50 p-2 rounded border border-orange-100">
-                注意：修改后，所有关联的公司/个体户及历史回款记录的负责人姓名都会同步更新。
-             </div>
-             <button onClick={handleSaveOwnerRename} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">确认修改</button>
-          </ModalBackdrop>
-      )}
-
-      {(activeModal === 'addPayment' || activeModal === 'addInvoice') && (
-        <ModalBackdrop title={activeModal === 'addPayment' ? "登记工厂货款 (支出)" : "发起开票需求 (进项)"} onClose={() => setActiveModal(null)}>
-           {activeModal === 'addInvoice' && (
-             <div className="space-y-1">
-               <label className="text-xs font-semibold text-slate-500">选择店铺</label>
-               <SearchableSelect
-                  options={stores.map(s => ({ value: s.id, label: `${s.storeName} [${s.companyName}]` }))}
-                  value={transaction.storeId}
-                  onChange={val => setTransaction({...transaction, storeId: val})}
-                  placeholder="搜索或选择店铺"
-               />
-             </div>
-           )}
-           
-           <div className="space-y-1">
-             <label className="text-xs font-semibold text-slate-500">
-                {activeModal === 'addPayment' ? '选择工厂' : '选择开票单位 (公司/个体户)'}
-             </label>
-             {activeModal === 'addPayment' ? (
-                <SearchableSelect
-                    options={uniqueOwners.map(owner => ({ value: owner, label: owner }))}
-                    value={transaction.supplierId}
-                    onChange={val => setTransaction({...transaction, supplierId: val})}
-                    placeholder="搜索或选择工厂"
-                />
-             ) : (
-                <SearchableSelect
-                    options={suppliers.map(s => {
-                        const used = getSupplierInvoicedTotal(s.id);
-                        const remaining = s.quarterlyLimit - used;
-                        return { 
-                            value: s.id, 
-                            label: `[${s.owner}] ${s.name} (余: ${remaining > 0 ? (remaining/10000).toFixed(1) + '万' : '0'})` 
-                        };
-                    })}
-                    value={transaction.supplierId}
-                    onChange={val => setTransaction({...transaction, supplierId: val})}
-                    placeholder="搜索或选择开票单位"
-                />
-             )}
-           </div>
-           
-           <div className="grid grid-cols-2 gap-4">
-               <div className="space-y-1">
-                 <label className="text-xs font-semibold text-slate-500">金额 (¥)</label>
-                 <input className="w-full p-2 border rounded" type="number" placeholder="0.00" value={transaction.amount} onChange={e => setTransaction({...transaction, amount: e.target.value})} />
-               </div>
-               <div className="space-y-1">
-                 <label className="text-xs font-semibold text-slate-500">{activeModal === 'addPayment' ? '付款日期' : '开票日期'}</label>
-                 <input className="w-full p-2 border rounded" type="date" value={transaction.date} onChange={e => setTransaction({...transaction, date: e.target.value})} />
-               </div>
-           </div>
-
-           {/* 发票额度验证提示 */}
-           {activeModal === 'addInvoice' && transaction.supplierId && (
-             <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-               {(() => {
-                 const selectedSupplier = suppliers.find(s => s.id === transaction.supplierId);
-                 if (!selectedSupplier) return null;
-                 
-                 const usedAmount = getSupplierInvoicedTotal(selectedSupplier.id);
-                 const remainingAmount = selectedSupplier.quarterlyLimit - usedAmount;
-                 const inputAmount = parseFloat(transaction.amount) || 0;
-                 
-                 return (
-                   <div className="text-xs space-y-1">
-                     <div className="flex justify-between">
-                       <span className="text-slate-600">季度限额:</span>
-                       <span className="font-medium">¥{selectedSupplier.quarterlyLimit.toLocaleString()}</span>
-                     </div>
-                     <div className="flex justify-between">
-                       <span className="text-slate-600">已使用额度:</span>
-                       <span className="font-medium">¥{usedAmount.toLocaleString()}</span>
-                     </div>
-                     <div className="flex justify-between">
-                       <span className="text-slate-600">剩余额度:</span>
-                       <span className={`font-medium ${remainingAmount <= 0 ? 'text-red-600' : remainingAmount < 10000 ? 'text-orange-600' : 'text-green-600'}`}>
-                         ¥{remainingAmount.toLocaleString()}
-                       </span>
-                     </div>
-                     {inputAmount > 0 && (
-                       <div className={`pt-2 border-t ${inputAmount > remainingAmount ? 'border-red-200' : 'border-green-200'}`}>
-                         <div className={`text-center font-medium ${inputAmount > remainingAmount ? 'text-red-600' : 'text-green-600'}`}>
-                           {inputAmount > remainingAmount 
-                             ? `⚠️ 输入金额超出剩余额度 ¥${(inputAmount - remainingAmount).toLocaleString()}`
-                             : `✓ 输入金额在可用额度内`
-                           }
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                 );
-               })()}
-             </div>
-           )}
-
-           <button 
-             onClick={handleAddTransaction} 
-             className={`w-full py-2 rounded-lg font-medium text-white ${
-               activeModal === 'addPayment' 
-                 ? 'bg-orange-600 hover:bg-orange-700' 
-                 : transaction.supplierId && parseFloat(transaction.amount) > 0 && suppliers.find(s => s.id === transaction.supplierId) && 
-                   (parseFloat(transaction.amount) > (suppliers.find(s => s.id === transaction.supplierId)!.quarterlyLimit - getSupplierInvoicedTotal(transaction.supplierId)))
-                   ? 'bg-gray-400 cursor-not-allowed' 
-                   : 'bg-indigo-600 hover:bg-indigo-700'
-             }`}
-             disabled={activeModal === 'addInvoice' && transaction.supplierId && parseFloat(transaction.amount) > 0 && suppliers.find(s => s.id === transaction.supplierId) && 
-               (parseFloat(transaction.amount) > (suppliers.find(s => s.id === transaction.supplierId)!.quarterlyLimit - getSupplierInvoicedTotal(transaction.supplierId)))}
-           >
-             确认提交
-           </button>
-        </ModalBackdrop>
-      )}
-
-      {/* Quarter Management Modal */}
-      {activeModal === 'quarterManagement' && (
-        <ModalBackdrop title="季度历史记录" onClose={() => setActiveModal(null)}>
-           <div className="space-y-3">
-               {availableQuarters.map(quarter => (
-                   <div key={quarter} className={`p-3 rounded-lg border ${currentQuarter === quarter ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-slate-50'}`}>
-                       <div className="flex justify-between items-center">
-                           <div>
-                               <h4 className="font-medium text-slate-800">{quarter}</h4>
-                               <p className="text-xs text-slate-500">
-                                   {quarterData[quarter] ? 
-                                       `总收入: ¥${(quarterData[quarter].stores.reduce((sum, s) => sum + s.quarterIncome, 0) / 10000).toFixed(1)}万, 总支出: ¥${(quarterData[quarter].stores.reduce((sum, s) => sum + s.quarterExpenses, 0) / 10000).toFixed(1)}万` : 
-                                       '暂无数据'
-                                   }
-                               </p>
-                           </div>
-                           <div className="flex gap-2">
-                               <button 
-                                   onClick={() => {
-                                       if (confirm(`确认删除${quarter}的季度数据？\n\n注意：这将永久删除该季度的所有数据，包括店铺、工厂、发票和付款记录。`)) {
-                                           // 创建新的季度数据对象，删除指定季度
-                                           const newQuarterData = { ...quarterData };
-                                           delete newQuarterData[quarter];
-                                           setQuarterData(newQuarterData);
-                                            
-                                           // 从availableQuarters中移除该季度
-                                           const newAvailableQuarters = availableQuarters.filter(q => q !== quarter);
-                                           setAvailableQuarters(newAvailableQuarters);
-                                            
-                                           // 如果删除的是当前季度，切换到其他可用季度或保持当前季度但重置数据
-                                           if (currentQuarter === quarter) {
-                                               if (newAvailableQuarters.length > 0) {
-                                                   // 切换到最新的可用季度
-                                                   const latestQuarter = newAvailableQuarters.sort().pop() || '2025Q3';
-                                                   handleSwitchQuarter(latestQuarter);
-                                               } else {
-                                                   // 如果没有其他季度，重置当前季度数据但不改变季度名称
-                                                   setStores([]);
-                                                   setSuppliers([]);
-                                                   setInvoices([]);
-                                                   setPayments([]);
-                                               }
-                                           }
-                                       }
-                                   }}
-                                   className="px-2 py-1 rounded text-xs bg-red-100 text-red-600 hover:bg-red-200 border border-red-200"
-                                   title="删除季度数据"
-                               >
-                                   删除
-                               </button>
-                               <button 
-                                   onClick={() => {
-                                       handleSwitchQuarter(quarter);
-                                       setActiveModal(null);
-                                   }}
-                                   className={`px-3 py-1 rounded text-sm ${currentQuarter === quarter ? 'bg-indigo-600 text-white' : 'bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50'}`}
-                               >
-                                   {currentQuarter === quarter ? '当前季度' : '切换'}
-                               </button>
-                           </div>
-                       </div>
-                   </div>
-               ))}
-           </div>
-           <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded border border-slate-100 mt-4">
-               <p className="font-medium mb-1">提示：</p>
-               <ul className="space-y-1 list-disc list-inside">
-                   <li>点击"切换"按钮可查看对应季度的历史数据</li>
-                   <li>数据按季度独立保存，互不影响</li>
-               </ul>
-           </div>
-        </ModalBackdrop>
-      )}
-
-
-      {/* --- SIDEBAR --- */}
-      <aside className="w-full md:w-64 bg-slate-900 text-slate-300 flex-shrink-0 sticky top-0 h-auto md:h-screen overflow-y-auto z-10 flex flex-col">
-        <div className="p-6 flex flex-col min-h-full">
-          <div className="flex items-center gap-2 mb-8 text-white">
-            <Receipt className="text-indigo-400" size={28} />
-            <h1 className="text-xl font-bold tracking-tight">{currentQuarter}</h1>
+        <ModalBackdrop title="编辑工厂名称" onClose={() => setActiveModal(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">旧工厂名称</label>
+              <input className="w-full p-2 border rounded bg-slate-50" value={ownerRenameForm.oldName} disabled />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">新工厂名称</label>
+              <input className="w-full p-2 border rounded" placeholder="新工厂名称" value={ownerRenameForm.newName} onChange={e => setOwnerRenameForm({...ownerRenameForm, newName: e.target.value})} />
+            </div>
+            <button onClick={handleSaveOwnerRename} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">保存更新</button>
           </div>
+        </ModalBackdrop>
+      )}
+
+      {activeModal === 'addInvoice' && (
+        <ModalBackdrop title="添加开票记录" onClose={() => setActiveModal(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">店铺</label>
+              <SearchableSelect
+                options={stores.map(s => ({ value: s.id, label: s.storeName }))}
+                value={transaction.storeId}
+                onChange={val => setTransaction({...transaction, storeId: val || ''})}
+                placeholder="选择店铺"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">开票主体</label>
+              <SearchableSelect
+                options={suppliers.map(s => ({ value: s.id, label: `${s.owner} (${s.name})` }))}
+                value={transaction.supplierId}
+                onChange={val => setTransaction({...transaction, supplierId: val || ''})}
+                placeholder="选择开票主体"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">开票金额</label>
+              <input className="w-full p-2 border rounded" type="number" placeholder="开票金额" value={transaction.amount} onChange={e => setTransaction({...transaction, amount: e.target.value})} />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">开票日期</label>
+              <input className="w-full p-2 border rounded" type="date" value={transaction.date} onChange={e => setTransaction({...transaction, date: e.target.value})} />
+            </div>
+            <button onClick={handleAddTransaction} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">添加开票记录</button>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {activeModal === 'addPayment' && (
+        <ModalBackdrop title="添加工厂货款支付记录" onClose={() => setActiveModal(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">工厂负责人</label>
+              <SearchableSelect
+                options={factoryOwners.map(owner => ({ value: owner, label: owner }))}
+                value={transaction.supplierId}
+                onChange={(val) => setTransaction({...transaction, supplierId: val as string})}
+                placeholder="选择工厂负责人"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">支付金额</label>
+              <input className="w-full p-2 border rounded" type="number" placeholder="支付金额" value={transaction.amount} onChange={e => setTransaction({...transaction, amount: e.target.value})} />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">支付日期</label>
+              <input className="w-full p-2 border rounded" type="date" value={transaction.date} onChange={e => setTransaction({...transaction, date: e.target.value})} />
+            </div>
+            <button onClick={handleAddTransaction} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700">添加支付记录</button>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {/* --- MAIN CONTENT --- */}
+
+      {/* Sidebar Navigation */}
+      <div className="w-full md:w-64 bg-white border-r border-slate-200 p-4 sticky top-0 h-screen overflow-y-auto hidden md:block">
+        <h1 className="text-xl font-bold text-slate-800 mb-6">InvoiceFlow</h1>
+        
+        {/* Navigation Links */}
+        <nav className="space-y-1">
+          <button 
+            onClick={() => setCurrentView('dashboard')}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left ${currentView === 'dashboard' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <LayoutDashboard size={20} />
+            <span>仪表盘</span>
+          </button>
           
-          <nav className="space-y-2">
-            <button 
-              onClick={() => setCurrentView('dashboard')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'dashboard' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}
-            >
-              <LayoutDashboard size={20} /> 数据总览
+          <button 
+            onClick={() => setCurrentView('stores')}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left ${currentView === 'stores' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Store size={20} />
+            <span>店铺管理</span>
+          </button>
+          
+          <button 
+            onClick={() => setCurrentView('suppliers')}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left ${currentView === 'suppliers' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Users size={20} />
+            <span>工厂管理</span>
+          </button>
+          
+          <button 
+            onClick={() => setCurrentView('admin')}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left ${currentView === 'admin' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Building2 size={20} />
+            <span>系统管理</span>
+          </button>
+          
+          <button 
+            onClick={() => setCurrentView('chat')}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left ${currentView === 'chat' ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Bot size={20} />
+            <span>AI分析</span>
+          </button>
+        </nav>
+        
+        {/* Quick Actions */}
+        <div className="mt-8">
+          <h2 className="text-sm font-semibold text-slate-500 mb-3">快捷操作</h2>
+          <div className="space-y-2">
+            <button onClick={handleOpenAddStore} className="w-full flex items-center gap-3 p-3 rounded-lg text-left bg-green-50 text-green-700 hover:bg-green-100">
+              <Plus size={20} />
+              <span>新增店铺</span>
             </button>
-            <button 
-              onClick={() => setCurrentView('stores')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'stores' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}
-            >
-              <Store size={20} /> 店铺管理
-            </button>
-            <button 
-              onClick={() => setCurrentView('suppliers')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'suppliers' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}
-            >
-              <Users size={20} /> 工厂管理
-            </button>
-            <button 
-              onClick={() => setCurrentView('userInvoices')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'userInvoices' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}
-            >
-              <FileText size={20} /> 开票记录
-            </button>
-             <button 
-              onClick={() => setCurrentView('chat')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'chat' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}
-            >
-              <Sparkles size={20} /> AI 助手
-            </button>
-          </nav>
-
-          <div className="mt-8 pt-8 border-t border-slate-700 space-y-3">
-            <button 
-              onClick={() => { const today = new Date().toISOString().split('T')[0]; setTransaction({storeId:'', supplierId:'', amount:'', date: today}); setActiveModal('addPayment'); }}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg flex items-center justify-center gap-2 transition-colors border border-slate-700"
-            >
-              <CreditCard size={18} className="text-orange-400" /> 登记工厂货款
-            </button>
-            <button 
-              onClick={() => { const today = new Date().toISOString().split('T')[0]; setTransaction({storeId:'', supplierId:'', amount:'', date: today}); setActiveModal('addInvoice'); }}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg flex items-center justify-center gap-2 transition-colors border border-slate-700"
-            >
-               <FilePlus size={18} className="text-green-400" /> 登记发票进项
-            </button>
-          </div>
-
-          <div className="mt-auto pt-8">
-            <button 
-               onClick={() => setCurrentView('admin')}
-               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${currentView === 'admin' ? 'bg-indigo-900 text-indigo-200' : 'hover:bg-slate-800 text-slate-500 hover:text-slate-300'}`}
-            >
-               <Shield size={20} /> 管理员设置
+            <button onClick={handleOpenAddSupplier} className="w-full flex items-center gap-3 p-3 rounded-lg text-left bg-blue-50 text-blue-700 hover:bg-blue-100">
+              <Plus size={20} />
+              <span>新增工厂</span>
             </button>
           </div>
         </div>
-      </aside>
-
-      {/* --- MAIN CONTENT --- */}
-      <main className="flex-1 p-4 md:p-8 overflow-y-auto bg-gray-50 text-gray-900">
-        <header className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-800 capitalize">
-                {currentView === 'dashboard' && '数据总览'}
-                {currentView === 'stores' && '店铺管理'}
-                {currentView === 'suppliers' && '工厂发票管理'}
-                {currentView === 'userInvoices' && '开票记录'}
-                {currentView === 'chat' && 'AI 税务助手'}
-                {currentView === 'admin' && '管理员设置'}
-              </h2>
+        
+        {/* Current Quarter Info */}
+        <div className="mt-8 bg-indigo-50 p-4 rounded-lg">
+          <h2 className="text-sm font-semibold text-indigo-700 mb-2">当前季度</h2>
+          <p className="text-2xl font-bold text-indigo-900">{currentQuarter}</p>
+          <div className="mt-2 text-xs text-indigo-600">
+            <div className="flex justify-between mb-1">
+              <span>已开票总额:</span>
+              <span className="font-medium">¥{totalInvoiced.toLocaleString()}</span>
             </div>
-            <div className="flex gap-3">
-              {currentView === 'stores' && (
-                <>
-                  <button onClick={handleExportStores} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-colors">
-                    <Download size={18}/> 导出数据
-                  </button>
-                  <button onClick={handleOpenAddStore} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700">
-                    <Plus size={18}/> 添加店铺
-                  </button>
-                </>
-              )}
-              {currentView === 'suppliers' && (
-                <>
-                  <button onClick={handleExportSuppliers} className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-colors">
-                    <Download size={18}/> 导出数据
-                  </button>
-                  <button onClick={handleOpenAddSupplier} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700">
-                    <Plus size={18}/> 添加工厂
-                  </button>
-                </>
-              )}
-              {currentView === 'dashboard' && (
-                  <button 
-                    onClick={handleRunAnalysis}
-                    disabled={analyzing}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 shadow-sm transition-colors disabled:opacity-70"
-                  >
-                    {analyzing ? (
-                      <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                    ) : (
-                      <Sparkles size={18} />
-                    )}
-                    一键 AI 优化
-                  </button>
-              )}
+            <div className="flex justify-between">
+              <span>待抵扣缺口:</span>
+              <span className="font-medium">¥{totalGap.toLocaleString()}</span>
             </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto bg-slate-50">
+        {/* Top Navigation Bar */}
+        <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-10">
+          <div className="flex justify-between items-center">
+            <h1 className="text-xl font-bold text-slate-800">
+              {currentView === 'dashboard' && '仪表盘'}
+              {currentView === 'stores' && '店铺管理'}
+              {currentView === 'suppliers' && '工厂管理'}
+              {currentView === 'admin' && '系统管理'}
+              {currentView === 'chat' && 'AI分析'}
+            </h1>
+            <div className="flex items-center gap-3">
+              <button onClick={handleExportData} className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
+                <Download size={16} />
+                <span>导出数据</span>
+              </button>
+              <button onClick={() => setActiveModal('quarterManagement')} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200">
+                <Calendar size={16} />
+                <span>季度管理</span>
+              </button>
+            </div>
+          </div>
         </header>
-
-        {/* DASHBOARD VIEW */}
-        {currentView === 'dashboard' && (
-          <div className="space-y-8">
+        
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-600"></div>
+          </div>
+        )}
+        
+        {/* Dashboard View */}
+        {!isLoading && currentView === 'dashboard' && (
+          <div className="p-6 space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 relative group hover:z-20 transition-all hover:shadow-md">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-green-100 text-green-600 rounded-lg"><TrendingUp size={20}/></div>
-                    <span className="text-gray-500 text-sm font-medium">季度总收入</span>
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">季度总营收</p>
+                    <h3 className="text-2xl font-bold text-slate-800">¥{totalIncome.toLocaleString()}</h3>
                   </div>
-                  <p className="text-2xl font-bold text-gray-800">¥{(totalIncome / 10000).toFixed(2)}万</p>
-                  <KpiTooltip title="店铺收入排行" items={sortedIncomeData} colorClass="bg-green-500" />
-               </div>
-               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 relative group hover:z-20 transition-all hover:shadow-md">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-red-100 text-red-600 rounded-lg"><ArrowUpRight size={20}/></div>
-                    <span className="text-gray-500 text-sm font-medium">发票缺口</span>
+                  <div className="bg-green-100 rounded-full p-2">
+                    <TrendingUp size={20} className="text-green-700" />
                   </div>
-                  <p className="text-2xl font-bold text-red-600">¥{(totalGap / 10000).toFixed(2)}万</p>
-                  <KpiTooltip title="店铺缺口排行" items={sortedGapData} colorClass="bg-red-500" />
-               </div>
-               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 relative group hover:z-20 transition-all hover:shadow-md">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-blue-100 text-blue-600 rounded-lg"><PieChart size={20}/></div>
-                    <span className="text-gray-500 text-sm font-medium">可用发票额度</span>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">¥{(totalQuotaAvailable / 10000).toFixed(2)}万</p>
-                  <KpiTooltip title="工厂可用额度排行" items={sortedQuotaData} colorClass="bg-blue-500" />
-               </div>
-               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 relative group hover:z-20 transition-all hover:shadow-md">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Users size={20}/></div>
-                    <span className="text-gray-500 text-sm font-medium">预计总应纳税额</span>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-800">
-                    ¥{(stores.reduce((total, store) => {
-                      // 获取店铺相关的发票数据
-                      const storeInvoices = invoices.filter(i => i.storeId === store.id);
-                      const totalInvoiced = storeInvoices.reduce((sum, i) => sum + i.amount, 0);
-                      
-                      // 税率常量
-                      const GENERAL_VAT_RATE = 0.13;
-                      const SMALL_VAT_RATE = 0.01;
-                      const INPUT_VAT_RATE = 0.01;
-                      const SURTAX_RATE_GENERAL = 0.12;
-                      const SURTAX_RATE_SMALL = 0.06;
-                      
-                      let estimatedVat = 0;
-                      let estimatedSurtax = 0;
-                      let estimatedIncomeTax = 0;
-                      let taxProfit = 0;
-                      
-                      if (store.taxType === '一般纳税人') {
-                        // 增值税
-                        const outputVat = (store.quarterIncome / (1 + GENERAL_VAT_RATE)) * GENERAL_VAT_RATE;
-                        const inputVat = (totalInvoiced / (1 + INPUT_VAT_RATE)) * INPUT_VAT_RATE;
-                        estimatedVat = Math.max(0, outputVat - inputVat);
-                        
-                        // 附加税
-                        estimatedSurtax = estimatedVat * SURTAX_RATE_GENERAL;
-                        
-                        // 企业所得税
-                        const exTaxIncome = store.quarterIncome / (1 + GENERAL_VAT_RATE);
-                        const exTaxCosts = store.quarterExpenses;
-                        const exTaxInvoiced = totalInvoiced / (1 + INPUT_VAT_RATE);
-                        taxProfit = exTaxIncome - exTaxCosts - exTaxInvoiced;
-                      } else {
-                        // 小规模纳税人
-                        estimatedVat = (store.quarterIncome / (1 + SMALL_VAT_RATE)) * SMALL_VAT_RATE;
-                        estimatedSurtax = estimatedVat * SURTAX_RATE_SMALL;
-                        taxProfit = store.quarterIncome - store.quarterExpenses - totalInvoiced;
-                      }
-                      
-                      // 企业所得税计算
-                      if (taxProfit > 0) {
-                        if (taxProfit <= 3000000) {
-                          estimatedIncomeTax = taxProfit * 0.05;
-                        } else {
-                          estimatedIncomeTax = taxProfit * 0.25;
-                        }
-                      }
-                      
-                      const totalEstimatedTax = estimatedVat + estimatedSurtax + estimatedIncomeTax;
-                      return total + totalEstimatedTax;
-                    }, 0) / 10000).toFixed(2)}万
-                  </p>
-                  <KpiTooltip 
-                    title="各店铺预计应纳税额" 
-                    items={stores.map(store => {
-                      // 获取店铺相关的发票数据
-                      const storeInvoices = invoices.filter(i => i.storeId === store.id);
-                      const totalInvoiced = storeInvoices.reduce((sum, i) => sum + i.amount, 0);
-                      
-                      // 税率常量
-                      const GENERAL_VAT_RATE = 0.13;
-                      const SMALL_VAT_RATE = 0.01;
-                      const INPUT_VAT_RATE = 0.01;
-                      const SURTAX_RATE_GENERAL = 0.12;
-                      const SURTAX_RATE_SMALL = 0.06;
-                      
-                      let estimatedVat = 0;
-                      let estimatedSurtax = 0;
-                      let estimatedIncomeTax = 0;
-                      let taxProfit = 0;
-                      
-                      if (store.taxType === '一般纳税人') {
-                        // 增值税
-                        const outputVat = (store.quarterIncome / (1 + GENERAL_VAT_RATE)) * GENERAL_VAT_RATE;
-                        const inputVat = (totalInvoiced / (1 + INPUT_VAT_RATE)) * INPUT_VAT_RATE;
-                        estimatedVat = Math.max(0, outputVat - inputVat);
-                        
-                        // 附加税
-                        estimatedSurtax = estimatedVat * SURTAX_RATE_GENERAL;
-                        
-                        // 企业所得税
-                        const exTaxIncome = store.quarterIncome / (1 + GENERAL_VAT_RATE);
-                        const exTaxCosts = store.quarterExpenses;
-                        const exTaxInvoiced = totalInvoiced / (1 + INPUT_VAT_RATE);
-                        taxProfit = exTaxIncome - exTaxCosts - exTaxInvoiced;
-                      } else {
-                        // 小规模纳税人
-                        estimatedVat = (store.quarterIncome / (1 + SMALL_VAT_RATE)) * SMALL_VAT_RATE;
-                        estimatedSurtax = estimatedVat * SURTAX_RATE_SMALL;
-                        taxProfit = store.quarterIncome - store.quarterExpenses - totalInvoiced;
-                      }
-                      
-                      // 企业所得税计算
-                      if (taxProfit > 0) {
-                        if (taxProfit <= 3000000) {
-                          estimatedIncomeTax = taxProfit * 0.05;
-                        } else {
-                          estimatedIncomeTax = taxProfit * 0.25;
-                        }
-                      }
-                      
-                      const totalEstimatedTax = estimatedVat + estimatedSurtax + estimatedIncomeTax;
-                      
-                      return {
-                        label: store.storeName,
-                        value: totalEstimatedTax
-                      };
-                    }).filter(item => item.value > 0).sort((a, b) => b.value - a.value)}
-                    colorClass="bg-orange-500" 
-                  />
-               </div>
-            </div>
-
-            {/* AI Analysis Section */}
-            {aiAnalysis && (
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-10">
-                  <Sparkles size={120} />
                 </div>
-                <h3 className="text-lg font-bold text-indigo-700 mb-4 flex items-center gap-2">
-                  <Sparkles className="text-indigo-400" size={20} /> Gemini 优化策略建议
-                </h3>
-                <div className="prose prose-sm prose-invert max-w-none text-slate-300 bg-slate-800/50 p-4 rounded-lg">
-                  <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
-                </div>
+                <KpiTooltip data={sortedIncomeData} title="按店铺排序" />
               </div>
-            )}
-
+              
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">已收发票</p>
+                    <h3 className="text-2xl font-bold text-slate-800">¥{totalInvoiced.toLocaleString()}</h3>
+                  </div>
+                  <div className="bg-blue-100 rounded-full p-2">
+                    <Receipt size={20} className="text-blue-700" />
+                  </div>
+                </div>
+                <div className="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, (totalInvoiced / (totalIncome - totalGap)) * 100)}%` }}
+                  ></div>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">已完成 {Math.min(100, Math.round((totalInvoiced / (totalIncome - totalGap)) * 100))}% 的发票收集</p>
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">待抵扣缺口</p>
+                    <h3 className="text-2xl font-bold text-amber-700">¥{totalGap.toLocaleString()}</h3>
+                  </div>
+                  <div className="bg-amber-100 rounded-full p-2">
+                    <ArrowUpRight size={20} className="text-amber-700" />
+                  </div>
+                </div>
+                <KpiTooltip data={sortedGapData} title="按店铺排序" />
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-sm text-slate-500 mb-1">剩余开票额度</p>
+                    <h3 className="text-2xl font-bold text-emerald-700">¥{totalQuotaAvailable.toLocaleString()}</h3>
+                  </div>
+                  <div className="bg-emerald-100 rounded-full p-2">
+                    <Shield size={20} className="text-emerald-700" />
+                  </div>
+                </div>
+                <KpiTooltip data={sortedQuotaData} title="按工厂排序" />
+              </div>
+            </div>
+            
             {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Store Gap Chart */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-6">所有店铺发票缺口</h3>
-                <div className="h-[400px] w-full">
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-slate-800">店铺发票缺口</h3>
+                  <div className="text-xs text-slate-500">按缺口金额排序</div>
+                </div>
+                <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="#94a3b8" 
-                        tickLine={{ stroke: '#e2e8f0' }}
-                        axisLine={{ stroke: '#e2e8f0' }}
-                        height={150}
-                        interval={0}
-                        tick={(props: any) => {
-                          const { x, y, payload } = props;
-                          const chars = payload.value.split('');
-                          return (
-                            <g>
-                              {chars.map((char: string, index: number) => (
-                                <text
-                                  key={`${payload.value}-${index}`}
-                                  x={x}
-                                  y={y + 10 + index * 12}
-                                  fill="#64748b"
-                                  fontSize={12}
-                                  textAnchor="middle"
-                                >
-                                  {char}
-                                </text>
-                              ))}
-                            </g>
-                          );
-                        }}
-                      />
-                      <YAxis 
-                        stroke="#94a3b8" 
-                        tickFormatter={(value) => `${value / 10000}万`}
-                        tick={{ fontSize: 12, fill: '#64748b' }}
-                        tickLine={{ stroke: '#e2e8f0' }}
-                        axisLine={{ stroke: '#e2e8f0' }}
-                      />
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                      <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
                       <Tooltip 
-                        formatter={(value: number) => `¥${value.toLocaleString()}`}
-                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#ffffff', color: '#475569' }}
+                        formatter={(value) => [`¥${value}`, '缺口金额']}
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                       />
-                      <Bar dataKey="Gap" name="发票缺口" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                      <Legend />
+                      <Bar dataKey="Gap" fill="#f59e0b" name="缺口金额" />
                     </BarChart>
                   </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Factory Remaining Quota Chart */}
-              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <h3 className="text-lg font-bold text-gray-800 mb-6">工厂开票剩余总额度</h3>
-                <div className="h-[400px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={factoryQuotaData} margin={{ top: 20, right: 30, left: 60, bottom: 20 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                      <XAxis 
-                        dataKey="name" 
-                        stroke="#94a3b8" 
-                        tickLine={{ stroke: '#e2e8f0' }}
-                        axisLine={{ stroke: '#e2e8f0' }}
-                        height={180}
-                        interval={0}
-                        tick={(props: any) => {
-                          const { x, y, payload } = props;
-                          const chars = payload.value.split('');
-                          return (
-                            <g>
-                              {chars.map((char: string, index: number) => (
-                                <text
-                                  key={`${payload.value}-${index}`}
-                                  x={x}
-                                  y={y + 10 + index * 12}
-                                  fill="#64748b"
-                                  fontSize={12}
-                                  textAnchor="middle"
-                                >
-                                  {char}
-                                </text>
-                              ))}
-                            </g>
-                          );
-                        }}
-                      />
-                      <YAxis 
-                        stroke="#94a3b8" 
-                        tickFormatter={(value) => `${value / 10000}万`}
-                        tick={{ fontSize: 12, fill: '#64748b' }}
-                        tickLine={{ stroke: '#e2e8f0' }}
-                        axisLine={{ stroke: '#e2e8f0' }}
-                      />
-                      <Tooltip 
-                        formatter={(value: number) => `¥${value.toLocaleString()}`}
-                        contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', backgroundColor: '#ffffff', color: '#475569' }}
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            const factoryName = payload[0].payload.name;
-                            
-                            // 获取该工厂下所有主体的详细信息
-                            const factorySuppliers = suppliers.filter(s => s.owner === factoryName);
-                            const supplierDetails = factorySuppliers.map(supplier => {
-                              const used = getSupplierInvoicedTotal(supplier.id);
-                              const remaining = Math.max(0, supplier.quarterlyLimit - used);
-                              return {
-                                name: supplier.name,
-                                limit: supplier.quarterlyLimit,
-                                used: used,
-                                remaining: remaining
-                              };
-                            });
-                            
-                            return (
-                              <div className="bg-white p-3 border border-gray-300 rounded shadow-lg" style={{ maxWidth: '250px' }}>
-                                <p className="font-semibold mb-2">{factoryName}</p>
-                                <p className="text-sm mb-2">总剩余额度: ¥{payload[0].value.toLocaleString()}</p>
-                                <div className="border-t pt-2">
-                                  <p className="text-xs font-semibold mb-1">明细:</p>
-                                  {supplierDetails.map((detail, index) => (
-                                    <div key={`${detail.name}-${index}`} className="text-xs mb-1">
-                                      <div className="font-medium">{detail.name}</div>
-                                      <div className="text-gray-600">
-                                        限额: ¥{detail.limit.toLocaleString()} | 
-                                        剩余: ¥{detail.remaining.toLocaleString()}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Bar dataKey="Remaining" name="剩余额度" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* STORES VIEW */}
-        {currentView === 'stores' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start">
-            {stores.map(store => {
-               const storeInvoices = invoices.filter(i => i.storeId === store.id);
-               const storePayments = payments.filter(p => p.storeId === store.id);
-               const total = storeInvoices.reduce((sum, i) => sum + i.amount, 0);
-               return (
-                  <StoreCard 
-                    key={store.id} 
-                    store={store} 
-                    invoices={storeInvoices}
-                    payments={storePayments}
-                    suppliers={suppliers}
-                    totalInvoiced={total}
-                    onEditExpenses={() => handleEditExpenses(store)}
-                    onRequestInvoice={openInvoiceModal}
-                    onEditStore={handleOpenEditStore}
-                    onDeleteStore={handleDeleteStore}
-                  />
-               );
-            })}
-          </div>
-        )}
-
-        {/* USER INVOICES VIEW */}
-        {currentView === 'userInvoices' && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-
-              <div className="flex justify-between items-center mb-4">
-                <div className="flex items-center gap-4">
-                  <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    <FileText size={20} /> 开票记录
-                  </h3>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="店铺、工厂、开票主体或金额"
-                      value={invoiceSearchTerm}
-                      onChange={(e) => setInvoiceSearchTerm(e.target.value)}
-                      className="w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                    />
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-2.5 text-slate-400">
-                      <circle cx="11" cy="11" r="8"></circle>
-                      <path d="m21 21-4.3-4.3"></path>
-                    </svg>
-                    {invoiceSearchTerm && (
-                      <button
-                        onClick={() => setInvoiceSearchTerm('')}
-                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"></line>
-                          <line x1="6" y1="6" x2="18" y2="18"></line>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {invoiceSearchTerm && (
-                    <div className="text-xs text-slate-500">
-                      找到 {filteredInvoices.length} 个结果
-                    </div>
-                  )}
-                </div>
-                <div className="text-sm text-slate-500">
-                  共 {invoices.length} 条记录
                 </div>
               </div>
               
-              {/* 发票上传组件 - 暂缺 */}
-              {/* <InvoiceUpload
-                stores={stores}
-                suppliers={suppliers}
-                onInvoiceUpload={(invoiceData, image, verificationResult) => {
-                  // 处理上传的发票数据
-                  const newInvoice: InvoiceRecord = {
-                    id: `inv_${Date.now()}`,
-                    storeId: invoiceData.storeId || '',
-                    supplierId: invoiceData.supplierId || '',
-                    amount: invoiceData.amount || 0,
-                    date: invoiceData.date || new Date().toISOString().split('T')[0],
-                    image: image,
-                    status: verificationResult?.isValid ? 'verified' : 'pending',
-                    verificationResult: verificationResult
-                  };
-                  
-                  const updatedInvoices = [...invoices, newInvoice];
-                  setInvoices(updatedInvoices);
-                }}
-              /> */}
-
+              {/* Factory Quota Chart */}
+              <div className="bg-white rounded-xl shadow-sm p-4 border border-slate-200">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold text-slate-800">工厂开票剩余额度</h3>
+                  <div className="text-xs text-slate-500">按剩余额度排序</div>
+                </div>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={factoryQuotaData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                      <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                      <Tooltip 
+                        formatter={(value) => [`¥${value}`, '剩余额度']}
+                        contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                      />
+                      <Legend />
+                      <Bar dataKey="Remaining" fill="#10b981" name="剩余额度" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+            
+            {/* Quick Actions Section */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">快捷操作</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button onClick={handleOpenAddStore} className="flex flex-col items-center gap-2 p-4 bg-green-50 rounded-xl hover:bg-green-100 transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-green-200 flex items-center justify-center">
+                    <Store size={24} className="text-green-700" />
+                  </div>
+                  <span className="text-sm font-medium text-green-900">新增店铺</span>
+                </button>
+                <button onClick={handleOpenAddSupplier} className="flex flex-col items-center gap-2 p-4 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-blue-200 flex items-center justify-center">
+                    <Users size={24} className="text-blue-700" />
+                  </div>
+                  <span className="text-sm font-medium text-blue-900">新增工厂</span>
+                </button>
+                <button onClick={() => setActiveModal('addInvoice')} className="flex flex-col items-center gap-2 p-4 bg-indigo-50 rounded-xl hover:bg-indigo-100 transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-indigo-200 flex items-center justify-center">
+                    <FilePlus size={24} className="text-indigo-700" />
+                  </div>
+                  <span className="text-sm font-medium text-indigo-900">添加发票</span>
+                </button>
+                <button onClick={() => setActiveModal('addPayment')} className="flex flex-col items-center gap-2 p-4 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-purple-200 flex items-center justify-center">
+                    <CreditCard size={24} className="text-purple-700" />
+                  </div>
+                  <span className="text-sm font-medium text-purple-900">添加付款</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Stores View */}
+        {!isLoading && currentView === 'stores' && (
+          <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">店铺管理</h2>
+              <div className="flex items-center gap-3">
+                <input 
+                  type="text" 
+                  placeholder="搜索店铺..." 
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={storeSearchTerm}
+                  onChange={(e) => setStoreSearchTerm(e.target.value)}
+                />
+                <button onClick={handleOpenAddStore} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  <Plus size={16} />
+                  <span>新增店铺</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Store List */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {paginatedStores.map(store => (
+                <StoreCard 
+                  key={store.id} 
+                  store={store}
+                  invoiceAmount={getStoreInvoicedTotal(store.id)}
+                  onEdit={handleOpenEditStore}
+                  onDelete={() => setActiveModal('deleteStore')}
+                  onAddInvoice={() => openInvoiceModal(store.id)}
+                  onEditExpenses={() => handleEditExpenses(store)}
+                />
+              ))}
+            </div>
+            
+            {/* Pagination */}
+            <div className="flex justify-between items-center text-sm text-slate-500">
+              <div>
+                显示 {storeStartIndex + 1} 到 {Math.min(storeEndIndex, filteredStores.length)} 条，共 {filteredStores.length} 条
+              </div>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setStoreCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={storeCurrentPage === 1}
+                  className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  上一页
+                </button>
+                <span>{storeCurrentPage} / {storeTotalPages || 1}</span>
+                <button 
+                  onClick={() => setStoreCurrentPage(prev => Math.min(storeTotalPages || 1, prev + 1))}
+                  disabled={storeCurrentPage === storeTotalPages}
+                  className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Suppliers View */}
+        {!isLoading && currentView === 'suppliers' && (
+          <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">工厂管理</h2>
+              <div className="flex items-center gap-3">
+                <input 
+                  type="text" 
+                  placeholder="搜索工厂或开票单位..." 
+                  className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={supplierSearchTerm}
+                  onChange={(e) => setSupplierSearchTerm(e.target.value)}
+                />
+                <button onClick={handleOpenAddSupplier} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                  <Plus size={16} />
+                  <span>新增工厂</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Supplier List */}
+            <div className="space-y-6">
+              {Object.entries(filteredGroupedSuppliersMap).map(([owner, suppliers]) => (
+                <div key={owner} className="bg-white rounded-xl shadow-sm border border-slate-200">
+                  <div className="p-4 bg-indigo-50 border-b border-slate-200">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-lg font-semibold text-indigo-800">{owner}</h3>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setActiveModal('addSupplier')}
+                          className="flex items-center gap-1 px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs hover:bg-indigo-200"
+                        >
+                          <Plus size={12} />
+                          <span>新增开票单位</span>
+                        </button>
+                        <button 
+                          onClick={() => handleOpenRenameOwner(owner)}
+                          className="flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs hover:bg-amber-200"
+                        >
+                          <Pencil size={12} />
+                          <span>重命名工厂</span>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteOwner(owner)}
+                          className="flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                        >
+                          <X size={12} />
+                          <span>删除工厂</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {suppliers.map(supplier => (
+                      <SupplierRow 
+                        key={supplier.id}
+                        supplier={supplier}
+                        used={getSupplierInvoicedTotal(supplier.id)}
+                        onEdit={() => handleOpenEditEntity(supplier)}
+                        onDelete={() => handleDeleteEntity(supplier.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Admin View */}
+        {!isLoading && currentView === 'admin' && (
+          <div className="p-6 space-y-6">
+            <h2 className="text-xl font-bold text-slate-800">系统管理</h2>
+            
+            {/* System Backup Section */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">系统备份与恢复</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 border border-slate-200 rounded-lg">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                    <FileText size={16} />
+                    <span>导出数据</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-3">导出完整的系统数据，包括所有季度的历史记录</p>
+                  <button onClick={handleExportData} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                    <Download size={14} />
+                    <span>导出系统数据</span>
+                  </button>
+                </div>
+                
+                <div className="p-4 border border-slate-200 rounded-lg">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                    <Building2 size={16} />
+                    <span>导出店铺数据</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-3">导出店铺相关的数据，包括发票明细</p>
+                  <button onClick={handleExportStores} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                    <Download size={14} />
+                    <span>导出店铺数据</span>
+                  </button>
+                </div>
+                
+                <div className="p-4 border border-slate-200 rounded-lg">
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                    <Users size={16} />
+                    <span>导出工厂数据</span>
+                  </h4>
+                  <p className="text-xs text-slate-500 mb-3">导出工厂相关的数据，包括开票和付款明细</p>
+                  <button onClick={handleExportSuppliers} className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+                    <Download size={14} />
+                    <span>导出工厂数据</span>
+                  </button>
+                </div>
+              </div>
+              
+              <div className="mt-4 p-4 border-2 border-dashed border-slate-300 rounded-lg">
+                <h4 className="text-sm font-semibold text-slate-700 mb-2 flex items-center gap-2">
+                  <FilePlus size={16} />
+                  <span>恢复数据</span>
+                </h4>
+                <p className="text-xs text-slate-500 mb-3">从备份文件恢复系统数据，这将覆盖当前所有数据</p>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="file" 
+                    accept=".json" 
+                    onChange={handleImportData}
+                    className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  <span className="text-xs text-slate-400">支持 .json 格式的备份文件</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Invoice Records Section */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">所有发票记录</h3>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="搜索发票..." 
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={invoiceSearchTerm}
+                    onChange={(e) => setInvoiceSearchTerm(e.target.value)}
+                  />
+                  <button onClick={() => setActiveModal('addInvoice')} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                    <Plus size={14} />
+                    <span>添加发票</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Invoice Filter Bar */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-500">状态:</span>
+                  <button 
+                    onClick={() => setInvoiceStatusFilter('all')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${invoiceStatusFilter === 'all' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    全部
+                  </button>
+                  <button 
+                    onClick={() => setInvoiceStatusFilter('pending')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${invoiceStatusFilter === 'pending' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    待审核
+                  </button>
+                  <button 
+                    onClick={() => setInvoiceStatusFilter('verified')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${invoiceStatusFilter === 'verified' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    已验证
+                  </button>
+                  <button 
+                    onClick={() => setInvoiceStatusFilter('rejected')}
+                    className={`px-3 py-1 rounded-full text-xs font-medium ${invoiceStatusFilter === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    已拒绝
+                  </button>
+                </div>
+              </div>
+              
+              {/* Invoice Table */}
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="text-xs text-slate-500 uppercase bg-slate-50">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-4 py-3 text-center">序号</th>
-                      <th className="px-4 py-3 text-center">开票日期</th>
-                      <th className="px-4 py-3 text-center">店铺名称-工厂主体</th>
-                      <th className="px-4 py-3 text-center">金额</th>
-                      <th className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <span>发票状态</span>
-                          <select 
-                            value={invoiceStatusFilter} 
-                            onChange={(e) => setInvoiceStatusFilter(e.target.value)}
-                            className="text-xs px-1 py-0.5 border border-slate-300 rounded bg-white"
-                          >
-                            <option value="all">全部</option>
-                            <option value="pending">待核验</option>
-                            <option value="completed">完成</option>
-                          </select>
-                        </div>
-                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">开票日期</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">店铺名称</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">开票主体</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">开票金额</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">状态</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedInvoices.map((invoice, index) => {
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {adminPaginatedInvoices.map(invoice => {
                       const store = stores.find(s => s.id === invoice.storeId);
                       const supplier = suppliers.find(s => s.id === invoice.supplierId);
-                      const factoryOwner = supplier?.owner || '未知工厂';
-                      const supplierName = supplier?.name || '未知主体';
                       const statusInfo = getInvoiceStatusInfo(invoice.status || 'pending');
-                      const serialNumber = invoiceStartIndex + index + 1;
-                       
+                      
                       return (
                         <tr key={invoice.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-900 text-center">{serialNumber}</td>
-                          <td className="px-4 py-3 font-medium text-slate-900 text-center">{invoice.date}</td>
-                          <td className="px-4 py-3 text-slate-700 text-center">
-                            <div className="font-medium">{store?.storeName || '未知店铺'}-{store?.companyName || '未知公司'}</div>
-                            <div className="text-xs text-slate-500">{factoryOwner} - {supplierName}</div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-700 font-medium text-center">¥{invoice.amount.toLocaleString()}</td>
-                          <td className="px-4 py-3">
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusInfo.className}`}>
-                              {statusInfo.text}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{invoice.date}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{store?.storeName || '未知店铺'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{supplier?.name || '未知主体'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">¥{invoice.amount.toLocaleString()}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.className}`}>
+                              {statusInfo.label}
                             </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button 
+                              onClick={() => handleDeleteInvoiceRecord(invoice.id)}
+                              className="text-red-600 hover:text-red-900 mr-3"
+                            >
+                              删除
+                            </button>
                           </td>
                         </tr>
                       );
@@ -2193,843 +2018,146 @@ function App() {
                 </table>
               </div>
               
-              {/* 分页控件 */}
-              {invoiceTotalPages > 1 && (
-                <div className="flex justify-between items-center mt-4">
-                  <div className="text-sm text-slate-500">
-                    显示 {invoiceStartIndex + 1} 到 {Math.min(invoiceEndIndex, filteredInvoices.length)} 条，共 {filteredInvoices.length} 条
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={() => setInvoiceCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={invoiceCurrentPage === 1}
-                      className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      上一页
-                    </button>
-                    
-                    {/* 页码按钮 */}
-                    {Array.from({ length: invoiceTotalPages }, (_, i) => i + 1).map(page => (
-                      <button
-                        key={page}
-                        onClick={() => setInvoiceCurrentPage(page)}
-                        className={`px-3 py-1 rounded-md text-sm font-medium ${invoiceCurrentPage === page ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
-                      >
-                        {page}
-                      </button>
+              {/* Pagination */}
+              <div className="flex justify-between items-center text-sm text-slate-500 mt-4">
+                <div>
+                  显示 {adminInvoiceStartIndex + 1} 到 {Math.min(adminInvoiceEndIndex, filteredInvoices.length)} 条，共 {filteredInvoices.length} 条
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setAdminInvoiceCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={adminInvoiceCurrentPage === 1}
+                    className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    上一页
+                  </button>
+                  <span>{adminInvoiceCurrentPage} / {adminInvoiceTotalPages || 1}</span>
+                  <button 
+                    onClick={() => setAdminInvoiceCurrentPage(prev => Math.min(adminInvoiceTotalPages || 1, prev + 1))}
+                    disabled={adminInvoiceCurrentPage === adminInvoiceTotalPages}
+                    className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Payments Section */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-slate-800">工厂货款支付记录</h3>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="text" 
+                    placeholder="搜索付款..." 
+                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={paymentSearchTerm}
+                    onChange={(e) => setPaymentSearchTerm(e.target.value)}
+                  />
+                  <button onClick={() => setActiveModal('addPayment')} className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                    <Plus size={14} />
+                    <span>添加付款</span>
+                  </button>
+                </div>
+              </div>
+              
+              {/* Payments Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">付款日期</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">工厂负责人</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">付款金额</th>
+                      <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-slate-100">
+                    {paginatedPayments.map(payment => (
+                      <tr key={payment.id} className="hover:bg-slate-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{payment.date}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{payment.factoryOwner}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">¥{payment.amount.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <button 
+                            onClick={() => handleDeletePaymentRecord(payment.id)}
+                            className="text-red-600 hover:text-red-900"
+                          >
+                            删除
+                          </button>
+                        </td>
+                      </tr>
                     ))}
-                    
-                    <button
-                      onClick={() => setInvoiceCurrentPage(prev => Math.min(invoiceTotalPages, prev + 1))}
-                      disabled={invoiceCurrentPage === invoiceTotalPages}
-                      className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      下一页
-                    </button>
-                  </div>
-                </div>
-              )}
+                  </tbody>
+                </table>
+              </div>
               
-
-              
-              {filteredInvoices.length === 0 && (
-                <div className="text-center py-8 text-slate-500">
-                  <FileText size={32} className="mx-auto mb-2 text-slate-300"/>
-                  <p>暂无开票记录</p>
-                  <p className="text-sm">请上传发票图片或联系管理员</p>
+              {/* Pagination */}
+              <div className="flex justify-between items-center text-sm text-slate-500 mt-4">
+                <div>
+                  显示 {paymentStartIndex + 1} 到 {Math.min(paymentEndIndex, filteredPayments.length)} 条，共 {filteredPayments.length} 条
                 </div>
-              )}
-              <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                <div className="text-sm text-slate-500">
-                  {invoiceSearchTerm ? `搜索到 ${filteredInvoices.length} 条记录` : `共 ${invoices.length} 条记录`}
-                </div>
-                <div className="text-sm text-slate-500">
-                  总金额: ¥{filteredInvoices.reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString()}
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setPaymentCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={paymentCurrentPage === 1}
+                    className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    上一页
+                  </button>
+                  <span>{paymentCurrentPage} / {paymentTotalPages || 1}</span>
+                  <button 
+                    onClick={() => setPaymentCurrentPage(prev => Math.min(paymentTotalPages || 1, prev + 1))}
+                    disabled={paymentCurrentPage === paymentTotalPages}
+                    className="px-3 py-1 border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    下一页
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         )}
-
-        {/* SUPPLIERS VIEW */}
-        {currentView === 'suppliers' && (
-          <div className="space-y-6 relative">
-             {/* Frozen Header */}
-             <div className="sticky top-0 z-30 bg-slate-100/95 backdrop-blur-sm border-b border-slate-200 py-3 text-sm font-bold text-slate-600 shadow-sm transition-all -mx-4 px-4 md:-mx-8 md:px-8">
-                <div className="flex items-center">
-                    <div className="hidden md:block w-64 pl-6">工厂</div>
-                    <div className="flex-1 grid grid-cols-12 gap-4 px-4">
-                        <div className="col-span-4 pl-1">公司/个体户</div>
-                        <div className="col-span-3">店铺名称</div>
-                        <div className="col-span-5">开票余额</div>
-                    </div>
-                </div>
-             </div>
-
-             {/* Note: We now group by Owner (Factory Name) */}
-             {/* 按工厂开票主体数量从高到低排序 */}
-             {Object.entries(groupedSuppliersMap)
-               .sort(([, a], [, b]) => b.length - a.length)
-               .map(([ownerName, groupedSuppliers]) => {
-                
-                // Calculate item data for each supplier in the group
-                const supplierItems: SupplierItemData[] = (groupedSuppliers as SupplierEntity[]).map(supplier => {
-                    const supplierInvoices = invoices.filter(i => i.supplierId === supplier.id);
-                    
-                    const totalInvoiced = supplierInvoices.reduce((sum, i) => sum + i.amount, 0);
-                    
-                    const linkedStoreIds = Array.from(new Set([
-                        ...supplierInvoices.map(i => i.storeId),
-                    ]));
-                    
-                    const linkedStores = linkedStoreIds.map(id => {
-                        const st = stores.find(s => s.id === id);
-                        return st ? { name: st.storeName, companyName: st.companyName } : { name: '未知店铺', companyName: '未知公司' };
-                    });
-                    
-                    // Group invoices by store for tooltip
-                    const invoiceDetails: Record<string, {date: string, amount: number}[]> = {};
-                    supplierInvoices.forEach(inv => {
-                        const st = stores.find(s => s.id === inv.storeId);
-                        const stName = st?.storeName || '未知店铺';
-                        if (!invoiceDetails[stName]) invoiceDetails[stName] = [];
-                        invoiceDetails[stName].push({ date: inv.date, amount: inv.amount });
-                    });
-
-                    return {
-                      entity: supplier,
-                      stats: { totalPaid: 0, totalInvoiced }, // Paid is now tracked at factory level
-                      linkedStores: linkedStores,
-                      invoiceDetails
-                    };
-                });
-                
-                const factoryPayments = payments.filter(p => {
-                    // Match payments recorded against the factory owner directly
-                    if (p.factoryOwner === ownerName) return true;
-                    // Also match legacy/mock payments where supplierId belongs to one of this owner's entities
-                    if (p.supplierId) {
-                        const sup = suppliers.find(s => s.id === p.supplierId);
-                        return sup && sup.owner === ownerName;
-                    }
-                    return false;
-                });
-                
-                const totalFactoryPaid = factoryPayments.reduce((sum, p) => sum + p.amount, 0);
-                
-                const paymentDetails = factoryPayments.map(p => ({
-                    date: p.date,
-                    amount: p.amount
-                })).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-                
-                if (supplierItems.length > 0) {
-                    supplierItems[0].stats.totalPaid = totalFactoryPaid;
-                }
-
-                return (
-                  <SupplierRow 
-                    key={ownerName}
-                    ownerName={ownerName}
-                    supplierCount={groupedSuppliers.length}  // 添加开票主体数量
-                    items={supplierItems}
-                    paymentDetails={paymentDetails}
-                    onAddInvoice={(id) => {
-                        setTransaction({ storeId: '', supplierId: id, amount: '', date: new Date().toISOString().split('T')[0] });
-                        setActiveModal('addInvoice');
-                    }}
-                    onDeleteOwner={handleDeleteOwner}
-                    onDeleteEntity={handleDeleteEntity}
-                  />
-                );
-             })}
-          </div>
-        )}
-
-        {/* CHAT VIEW */}
-        {currentView === 'chat' && (
-          <div className="max-w-4xl mx-auto">
-             <div className="mb-6 bg-blue-50 border border-blue-100 p-4 rounded-lg flex gap-3">
-                <div className="bg-blue-100 text-blue-600 p-2 rounded-lg h-fit">
-                   <Bot size={20} />
-                </div>
-                <div>
-                   <h4 className="font-bold text-blue-900">专家模式</h4>
-                   <p className="text-sm text-blue-700 mt-1">
-                     您可以询问复杂的问题，例如“我应该如何在安吉新昌和义乌起泛之间分配40万的发票金额？”或者“如果再增加2家个体户，能节省多少税？”
-                   </p>
-                </div>
-             </div>
-             <AiChat />
-          </div>
-        )}
-
-        {/* ADMIN VIEW */}
-        {currentView === 'admin' && (
-            <div className="max-w-4xl mx-auto space-y-8 relative">
-                {/* 浮窗翻页导航 */}
-                <div 
-                    id="floating-nav"
-                    className="fixed z-50 bg-white shadow-lg border border-slate-200 rounded-lg"
-                    style={{
-                        top: '80px',
-                        left: '0px'
-                    }}
-                >
-                    <button 
-                        onClick={() => {
-                            document.getElementById('quarter-management')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSection('quarter-management');
-                        }}
-                        className={`flex items-center gap-3 px-4 py-3 w-full hover:bg-slate-100 transition-colors ${
-                            activeSection === 'quarter-management' 
-                                ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600' 
-                                : 'text-slate-600 hover:text-slate-800'
-                        }`}
-                        title="季度管理"
-                    >
-                        <Calendar size={18} />
-                        <span className="text-sm font-medium whitespace-nowrap">季度管理</span>
-                    </button>
-                    <button 
-                        onClick={() => {
-                            document.getElementById('store-management')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSection('store-management');
-                        }}
-                        className={`flex items-center gap-3 px-4 py-3 w-full hover:bg-slate-100 transition-colors ${
-                            activeSection === 'store-management' 
-                                ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600' 
-                                : 'text-slate-600 hover:text-slate-800'
-                        }`}
-                        title="店铺管理"
-                    >
-                        <Store size={18} />
-                        <span className="text-sm font-medium whitespace-nowrap">店铺管理</span>
-                    </button>
-                    <button 
-                        onClick={() => {
-                            document.getElementById('factory-management')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSection('factory-management');
-                        }}
-                        className={`flex items-center gap-3 px-4 py-3 w-full hover:bg-slate-100 transition-colors ${
-                            activeSection === 'factory-management' 
-                                ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600' 
-                                : 'text-slate-600 hover:text-slate-800'
-                        }`}
-                        title="工厂管理"
-                    >
-                        <Users size={18} />
-                        <span className="text-sm font-medium whitespace-nowrap">工厂管理</span>
-                    </button>
-                    <button 
-                        onClick={() => {
-                            document.getElementById('invoice-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSection('invoice-records');
-                        }}
-                        className={`flex items-center gap-3 px-4 py-3 w-full hover:bg-slate-100 transition-colors ${
-                            activeSection === 'invoice-records' 
-                                ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600' 
-                                : 'text-slate-600 hover:text-slate-800'
-                        }`}
-                        title="开票记录"
-                    >
-                        <FileText size={18} />
-                        <span className="text-sm font-medium whitespace-nowrap">开票记录</span>
-                    </button>
-                    <button 
-                        onClick={() => {
-                            document.getElementById('payment-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            setActiveSection('payment-records');
-                        }}
-                        className={`flex items-center gap-3 px-4 py-3 w-full hover:bg-slate-100 transition-colors ${
-                            activeSection === 'payment-records' 
-                                ? 'bg-indigo-50 text-indigo-600 border-l-2 border-indigo-600' 
-                                : 'text-slate-600 hover:text-slate-800'
-                        }`}
-                        title="货款记录"
-                    >
-                        <CreditCard size={18} />
-                        <span className="text-sm font-medium whitespace-nowrap">货款记录</span>
-                    </button>
-                </div>
-                {/* Quarter Management Section */}
-                <div id="quarter-management" className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <Calendar size={20} /> 季度管理
-                    </h3>
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-4">
-                            <span className="text-sm font-medium text-slate-700">当前季度：</span>
-                            <span className="px-3 py-2 bg-slate-100 rounded-lg text-sm font-medium text-slate-800">
-                                {currentQuarter}
-                            </span>
-                        </div>
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={() => {
-                                    if (confirm(`确认开始新季度？\n\n注意：开始新季度将清零所有店铺收入、工厂货款和开票数据，但会保留基础设置。`)) {
-                                        handleStartNewQuarter();
-                                    }
-                                }}
-                                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                开始新季度
-                            </button>
-
-                            <button 
-                                onClick={() => setActiveModal('quarterManagement')}
-                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
-                            >
-                                季度历史记录
-                            </button>
-                            <button 
-                                onClick={handleExportData}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                备份数据
-                            </button>
-                            <label className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer">
-                                恢复数据
-                                <input 
-                                    type="file" 
-                                    accept=".json" 
-                                    onChange={handleImportData}
-                                    className="hidden"
-                                />
-                            </label>
-
-                        </div>
-                        <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded border border-slate-100">
-                            <p className="font-medium mb-1">季度管理说明：</p>
-                            <ul className="space-y-1 list-disc list-inside">
-                                <li>开始新季度会清零所有收入、货款和开票数据</li>
-                                <li>店铺、工厂等基础设置会被保留</li>
-                                <li>建议在每个季度开始时备份重要数据</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="store-management" className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-4">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <Store size={20} /> 店铺管理
-                            </h3>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="搜索店铺或公司"
-                                    value={storeSearchTerm}
-                                    onChange={(e) => setStoreSearchTerm(e.target.value)}
-                                    className="w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-2.5 text-slate-400">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.3-4.3"></path>
-                                </svg>
-                                {storeSearchTerm && (
-                                    <button
-                                        onClick={() => setStoreSearchTerm('')}
-                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-                            {storeSearchTerm && (
-                                <div className="text-xs text-slate-500">
-                                    找到 {filteredStores.length} 个结果
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={handleOpenAddStore} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700">
-                                <Plus size={18}/> 添加店铺
-                            </button>
-                            <button 
-                                onClick={() => {
-                                    if (stores.length === 0) {
-                                        alert('没有店铺数据可导出');
-                                        return;
-                                    }
-                                    handleExportStores();
-                                }}
-                                className="bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-50 transition-colors"
-                            >
-                                <Download size={18}/> 导出数据
-                            </button>
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-                                <tr>
-                                    <th className="px-4 py-3">店铺</th>
-                                    <th className="px-4 py-3">公司名称</th>
-                                    <th className="px-4 py-3">纳税人类型</th>
-                                    <th className="px-4 py-3">季度收入</th>
-                                    <th className="px-4 py-3 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {paginatedStores.map(store => (
-                                    <tr key={store.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 font-medium text-slate-900">{store.storeName}</td>
-                                        <td className="px-4 py-3 text-slate-500">{store.companyName}</td>
-                                        <td className="px-4 py-3 text-slate-500">
-                                            <span className={`px-2 py-1 rounded text-xs ${
-                                                store.taxType === StoreTaxType.GENERAL 
-                                                    ? 'bg-blue-100 text-blue-700' 
-                                                    : 'bg-green-100 text-green-700'
-                                            }`}>
-                                                {store.taxType}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-700 font-medium">¥{store.quarterIncome.toLocaleString()}</td>
-                                        <td className="px-4 py-3 text-right flex gap-2 justify-end">
-                                            <button onClick={() => handleEditExpenses(store)} className="text-green-600 hover:text-green-800 text-xs font-medium bg-green-50 px-2 py-1 rounded">支出设置</button>
-                                            <button onClick={() => handleOpenEditStore(store)} className="text-indigo-600 hover:text-indigo-800 text-xs font-medium bg-indigo-50 px-2 py-1 rounded">基本信息</button>
-                                            <button onClick={() => { if(confirm('确认删除此店铺？\n\n注意：这将同时删除与该店铺相关的所有发票记录！')) handleDeleteStore(store.id); }} className="text-red-600 hover:text-red-800 text-xs font-medium bg-red-50 px-2 py-1 rounded">删除</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    {/* 分页控件 */}
-                    {storeTotalPages > 1 && (
-                        <div className="flex justify-between items-center mt-4">
-                            <div className="text-sm text-slate-500">
-                                显示 {storeStartIndex + 1} 到 {Math.min(storeEndIndex, filteredStores.length)} 条，共 {filteredStores.length} 条
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <button
-                                    onClick={() => setStoreCurrentPage(prev => Math.max(1, prev - 1))}
-                                    disabled={storeCurrentPage === 1}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    上一页
-                                </button>
-                                
-                                {/* 页码按钮 */}
-                                {Array.from({ length: storeTotalPages }, (_, i) => i + 1).map(page => (
-                                    <button
-                                        key={page}
-                                        onClick={() => setStoreCurrentPage(page)}
-                                        className={`px-3 py-1 rounded-md text-sm font-medium ${storeCurrentPage === page ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
-                                    >
-                                        {page}
-                                    </button>
-                                ))}
-                                
-                                <button
-                                    onClick={() => setStoreCurrentPage(prev => Math.min(storeTotalPages, prev + 1))}
-                                    disabled={storeCurrentPage === storeTotalPages}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    下一页
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {filteredStores.length === 0 && (
-                        <div className="text-center py-8 text-slate-500">
-                            <Store size={32} className="mx-auto mb-2 text-slate-300"/>
-                            <p>暂无店铺数据</p>
-                            <p className="text-sm">点击下方按钮添加第一个店铺</p>
-                        </div>
-                    )}
-                    <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                        <div className="text-sm text-slate-500">
-                            {storeSearchTerm ? `搜索到 ${filteredStores.length} 个店铺` : `共 ${stores.length} 个店铺`}
-                        </div>
-                    </div>
-                </div>
-
-                <div id="factory-management" className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-4">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <Users size={20} /> 工厂管理
-                            </h3>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="搜索工厂或开票主体..."
-                                    value={supplierSearchTerm}
-                                    onChange={(e) => setSupplierSearchTerm(e.target.value)}
-                                    className="w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-2.5 text-slate-400">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.3-4.3"></path>
-                                </svg>
-                                {supplierSearchTerm && (
-                                    <button
-                                        onClick={() => setSupplierSearchTerm('')}
-                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-                            {supplierSearchTerm && (
-                                <div className="text-xs text-slate-500">
-                                    找到 {filteredSuppliers.length} 个结果
-                                </div>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            <button onClick={handleOpenAddSupplier} className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-indigo-700">
-                                <Plus size={18}/> 添加新工厂
-                            </button>
-                        </div>
-                    </div>
-                    <div className="space-y-6">
-                        {factoryOwners.length === 0 && (
-                            <div className="text-center py-8 text-slate-500">
-                                <Users size={32} className="mx-auto mb-2 text-slate-300"/>
-                                <p>暂无工厂数据</p>
-                                <p className="text-sm">点击下方按钮添加第一个工厂</p>
-                            </div>
-                        )}
-                        {factoryOwners.map(owner => {
-                            const entities = filteredSuppliers.filter(s => s.owner === owner);
-                            const shouldShowFactory = entities.length > 0 || !supplierSearchTerm;
-                            
-                            if (!shouldShowFactory) return null;
-                            
-                            return (
-                                <div key={owner} className="border border-slate-200 rounded-lg p-4">
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                        {/* 左侧：工厂信息和操作按钮 */}
-                                        <div className="md:col-span-1">
-                                            {/* 工厂名称 */}
-                                            <h4 className="font-bold text-slate-700 flex items-center gap-2 mb-4">
-                                                <Building2 size={16} className="text-slate-400"/>
-                                                {owner}
-                                            </h4>
-                                            
-                                            {/* 操作按钮 */}
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleOpenRenameOwner(owner)} className="text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100 backdrop-blur-sm bg-white/80 hover:bg-white/90 transition-all">编辑</button>
-                                                <button onClick={() => { if(confirm('确认删除该工厂？\n\n注意：这将保留该工厂下的所有开票主体！')) handleDeleteOwner(owner); }} className="text-xs text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-red-100 backdrop-blur-sm bg-white/80 hover:bg-white/90 transition-all">删除</button>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* 右侧：工厂拥有的主体公司 */}
-                                        <div className="md:col-span-3 space-y-2">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <h5 className="text-sm font-medium text-slate-600">开票主体</h5>
-                                                <button onClick={() => { setIsNewFactory(false); setSupplierForm({...supplierForm, owner: owner, name: '', type: EntityType.INDIVIDUAL, limit: 280000}); setActiveModal('addSupplier'); }} className="text-xs text-slate-400 hover:text-indigo-600 flex items-center gap-1">
-                                                    <Plus size={12}/> 添加新主体
-                                                </button>
-                                            </div>
-                                            
-                                            {entities.length === 0 ? (
-                                                <div className="text-sm text-slate-500 text-center py-4 bg-slate-50 rounded-lg">
-                                                    该工厂暂无开票主体
-                                                </div>
-                                            ) : (
-                                                entities.map(entity => (
-                                                    <div key={entity.id} className="flex justify-between items-center text-sm bg-slate-50 p-2 rounded hover:bg-slate-100 transition-colors">
-                                                        <div>
-                                                            <span className="font-medium text-slate-700">{entity.name}</span>
-                                                            <span className="text-xs text-slate-500 ml-2">({entity.type})</span>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button onClick={() => handleOpenEditEntity(entity)} className="text-blue-600 hover:text-blue-800 text-xs">编辑</button>
-                                                            <button onClick={() => { if(confirm('确认删除此主体？\n\n注意：这将同时删除与该主体相关的所有开票和付款记录！')) handleDeleteEntity(entity.id); }} className="text-red-600 hover:text-red-800 text-xs">删除</button>
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-slate-100">
-                        <div className="text-sm text-slate-500 text-center">
-                            {supplierSearchTerm ? `搜索到 ${filteredSuppliers.length} 个工厂，${Object.keys(filteredGroupedSuppliersMap).length} 个开票主体` : `共 ${factoryOwners.length} 个工厂，${suppliers.length} 个开票主体`}
-                        </div>
-                    </div>
-                </div>
-
-                <div id="invoice-records" className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-4">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <FileText size={20} /> 开票记录
-                            </h3>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="店铺、工厂、开票主体或金额"
-                                    value={invoiceSearchTerm}
-                                    onChange={(e) => setInvoiceSearchTerm(e.target.value)}
-                                    className="w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-2.5 text-slate-400">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.3-4.3"></path>
-                                </svg>
-                                {invoiceSearchTerm && (
-                                    <button
-                                        onClick={() => setInvoiceSearchTerm('')}
-                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-                            {invoiceSearchTerm && (
-                                <div className="text-xs text-slate-500">
-                                    找到 {filteredInvoices.length} 个结果
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-sm text-slate-500">
-                            共 {invoices.length} 条记录
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-                                <tr>
-                                    <th className="px-4 py-3">开票日期</th>
-                                    <th className="px-4 py-3">店铺名称</th>
-                                    <th className="px-4 py-3">工厂-主体</th>
-                                    <th className="px-4 py-3">金额</th>
-                                    <th className="px-4 py-3 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {adminPaginatedInvoices.map(invoice => {
-                                    const store = stores.find(s => s.id === invoice.storeId);
-                                    const supplier = suppliers.find(s => s.id === invoice.supplierId);
-                                    const factoryOwner = supplier?.owner || '未知工厂';
-                                    const supplierName = supplier?.name || '未知主体';
-                                    
-                                    return (
-                                        <tr key={invoice.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3 font-medium text-slate-900">{invoice.date}</td>
-                                            <td className="px-4 py-3 text-slate-700">{store?.storeName || '未知店铺'}-{store?.companyName || '未知公司'}</td>
-                                            <td className="px-4 py-3 text-slate-700">
-                                                <div className="font-medium">{factoryOwner}</div>
-                                                <div className="text-xs text-slate-500">{supplierName}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-slate-700 font-medium">¥{invoice.amount.toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                <button 
-                                                    onClick={() => handleDeleteInvoiceRecord(invoice.id)}
-                                                    className="text-red-600 hover:text-red-800 text-xs font-medium bg-red-50 px-2 py-1 rounded hover:bg-red-100 transition-colors"
-                                                >
-                                                    删除
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    {/* 分页控件 */}
-                    {adminInvoiceTotalPages > 1 && (
-                        <div className="flex justify-between items-center mt-4">
-                            <div className="text-sm text-slate-500">
-                                显示 {adminInvoiceStartIndex + 1} 到 {Math.min(adminInvoiceEndIndex, filteredInvoices.length)} 条，共 {filteredInvoices.length} 条
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <button
-                                    onClick={() => setAdminInvoiceCurrentPage(prev => Math.max(1, prev - 1))}
-                                    disabled={adminInvoiceCurrentPage === 1}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    上一页
-                                </button>
-                                
-                                {/* 页码按钮 */}
-                                {Array.from({ length: adminInvoiceTotalPages }, (_, i) => i + 1).map(page => (
-                                    <button
-                                        key={page}
-                                        onClick={() => setAdminInvoiceCurrentPage(page)}
-                                        className={`px-3 py-1 rounded-md text-sm font-medium ${adminInvoiceCurrentPage === page ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
-                                    >
-                                        {page}
-                                    </button>
-                                ))}
-                                
-                                <button
-                                    onClick={() => setAdminInvoiceCurrentPage(prev => Math.min(adminInvoiceTotalPages, prev + 1))}
-                                    disabled={adminInvoiceCurrentPage === adminInvoiceTotalPages}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    下一页
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {filteredInvoices.length === 0 && (
-                        <div className="text-center py-8 text-slate-500">
-                            <FileText size={32} className="mx-auto mb-2 text-slate-300"/>
-                            <p>暂无开票记录</p>
-                            <p className="text-sm">请在店铺管理页面发起开票</p>
-                        </div>
-                    )}
-                    <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                        <div className="text-sm text-slate-500">
-                            {invoiceSearchTerm ? `搜索到 ${filteredInvoices.length} 条记录` : `共 ${invoices.length} 条记录`}
-                        </div>
-                        <div className="text-sm text-slate-500">
-                            总金额: ¥{filteredInvoices.reduce((sum, invoice) => sum + invoice.amount, 0).toLocaleString()}
-                        </div>
-                    </div>
-                </div>
-
-                <div id="payment-records" className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex justify-between items-center mb-4">
-                        <div className="flex items-center gap-4">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <CreditCard size={20} /> 货款记录
-                            </h3>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="工厂、金额或日期"
-                                    value={paymentSearchTerm}
-                                    onChange={(e) => setPaymentSearchTerm(e.target.value)}
-                                    className="w-64 pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                                />
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute left-3 top-2.5 text-slate-400">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <path d="m21 21-4.3-4.3"></path>
-                                </svg>
-                                {paymentSearchTerm && (
-                                    <button
-                                        onClick={() => setPaymentSearchTerm('')}
-                                        className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <line x1="18" y1="6" x2="6" y2="18"></line>
-                                            <line x1="6" y1="6" x2="18" y2="18"></line>
-                                        </svg>
-                                    </button>
-                                )}
-                            </div>
-                            {paymentSearchTerm && (
-                                <div className="text-xs text-slate-500">
-                                    找到 {filteredPayments.length} 个结果
-                                </div>
-                            )}
-                        </div>
-                        <div className="text-sm text-slate-500">
-                            共 {payments.length} 条记录
-                        </div>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50">
-                                <tr>
-                                    <th className="px-4 py-3">支付日期</th>
-                                    <th className="px-4 py-3">工厂</th>
-                                    <th className="px-4 py-3">金额</th>
-                                    <th className="px-4 py-3 text-right">操作</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {paginatedPayments.map(payment => {
-                                    return (
-                                        <tr key={payment.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3 font-medium text-slate-900">{payment.date}</td>
-                                            <td className="px-4 py-3 text-slate-700">{payment.factoryOwner || '未知工厂'}</td>
-                                            <td className="px-4 py-3 text-slate-700 font-medium">¥{payment.amount.toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right">
-                                                <button 
-                                                    onClick={() => handleDeletePaymentRecord(payment.id)}
-                                                    className="text-red-600 hover:text-red-800 text-xs font-medium bg-red-50 px-2 py-1 rounded hover:bg-red-100 transition-colors"
-                                                >
-                                                    删除
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                    
-                    {/* 分页控件 */}
-                    {paymentTotalPages > 1 && (
-                        <div className="flex justify-between items-center mt-4">
-                            <div className="text-sm text-slate-500">
-                                显示 {paymentStartIndex + 1} 到 {Math.min(paymentEndIndex, filteredPayments.length)} 条，共 {filteredPayments.length} 条
-                            </div>
-                            <div className="flex items-center space-x-1">
-                                <button
-                                    onClick={() => setPaymentCurrentPage(prev => Math.max(1, prev - 1))}
-                                    disabled={paymentCurrentPage === 1}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    上一页
-                                </button>
-                                
-                                {/* 页码按钮 */}
-                                {Array.from({ length: paymentTotalPages }, (_, i) => i + 1).map(page => (
-                                    <button
-                                        key={page}
-                                        onClick={() => setPaymentCurrentPage(page)}
-                                        className={`px-3 py-1 rounded-md text-sm font-medium ${paymentCurrentPage === page ? 'bg-indigo-600 text-white' : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
-                                    >
-                                        {page}
-                                    </button>
-                                ))}
-                                
-                                <button
-                                    onClick={() => setPaymentCurrentPage(prev => Math.min(paymentTotalPages, prev + 1))}
-                                    disabled={paymentCurrentPage === paymentTotalPages}
-                                    className="px-3 py-1 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    下一页
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {filteredPayments.length === 0 && (
-                        <div className="text-center py-8 text-slate-500">
-                            <CreditCard size={32} className="mx-auto mb-2 text-slate-300"/>
-                            <p>暂无支付货款记录</p>
-                            <p className="text-sm">请在店铺管理页面发起支付</p>
-                        </div>
-                    )}
-                    <div className="mt-4 pt-4 border-t border-slate-100 flex justify-between items-center">
-                        <div className="text-sm text-slate-500">
-                            {paymentSearchTerm ? `搜索到 ${filteredPayments.length} 条记录` : `共 ${payments.length} 条记录`}
-                        </div>
-                        <div className="text-sm text-slate-500">
-                            总金额: ¥{filteredPayments.reduce((sum, payment) => sum + payment.amount, 0).toLocaleString()}
-                        </div>
-                    </div>
-                </div>
+        
+        {/* AI Chat View */}
+        {!isLoading && currentView === 'chat' && (
+          <div className="p-6 space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold text-slate-800">AI税务优化分析</h2>
+              <button 
+                onClick={handleRunAnalysis}
+                disabled={analyzing}
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {analyzing && <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white"></div>}
+                <span>{analyzing ? '分析中...' : '运行分析'}</span>
+              </button>
             </div>
+            
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-slate-200 min-h-[600px]">
+              {aiAnalysis ? (
+                <div className="prose max-w-none">
+                  <ReactMarkdown>{aiAnalysis}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400">
+                  <Bot size={64} className="mb-4 opacity-50" />
+                  <p className="text-lg mb-2">AI税务优化分析</p>
+                  <p className="text-sm text-center max-w-md">点击上方"运行分析"按钮，AI将根据您的店铺数据和开票情况，为您提供税务优化建议</p>
+                </div>
+              )}
+            </div>
+            
+            <AiChat 
+              stores={stores} 
+              suppliers={suppliers} 
+              invoices={invoices} 
+              payments={payments}
+            />
+          </div>
         )}
-      </main>
+      </div>
     </div>
   );
 }

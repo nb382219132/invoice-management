@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# GH Pages deploy directories
+gh-pages-deploy/
+gh-pages-temp/

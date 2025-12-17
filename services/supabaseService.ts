@@ -19,6 +19,90 @@ const getSupabaseClient = (): SupabaseClient => {
   return supabase;
 };
 
+// 实时订阅功能
+
+// 订阅stores表的变化
+export const subscribeToStores = (callback: (stores: StoreCompany[]) => void) => {
+  const client = getSupabaseClient();
+  
+  // 首次获取数据
+  fetchStores().then(callback);
+  
+  // 订阅变化
+  return client
+    .channel('stores-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stores' }, async () => {
+      const stores = await fetchStores();
+      callback(stores);
+    })
+    .subscribe();
+};
+
+// 订阅suppliers表的变化
+export const subscribeToSuppliers = (callback: (suppliers: SupplierEntity[]) => void) => {
+  const client = getSupabaseClient();
+  
+  // 首次获取数据
+  fetchSuppliers().then(callback);
+  
+  // 订阅变化
+  return client
+    .channel('suppliers-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, async () => {
+      const suppliers = await fetchSuppliers();
+      callback(suppliers);
+    })
+    .subscribe();
+};
+
+// 订阅invoices表的变化
+export const subscribeToInvoices = (callback: (invoices: InvoiceRecord[]) => void) => {
+  const client = getSupabaseClient();
+  
+  // 首次获取数据
+  fetchInvoices().then(callback);
+  
+  // 订阅变化
+  return client
+    .channel('invoices-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, async () => {
+      const invoices = await fetchInvoices();
+      callback(invoices);
+    })
+    .subscribe();
+};
+
+// 订阅payments表的变化
+export const subscribeToPayments = (callback: (payments: PaymentRecord[]) => void) => {
+  const client = getSupabaseClient();
+  
+  // 首次获取数据
+  fetchPayments().then(callback);
+  
+  // 订阅变化
+  return client
+    .channel('payments-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, async () => {
+      const payments = await fetchPayments();
+      callback(payments);
+    })
+    .subscribe();
+};
+
+// 订阅季度相关数据的变化
+export const subscribeToQuarterData = (callback: () => void) => {
+  const client = getSupabaseClient();
+  
+  // 订阅所有季度相关表的变化
+  return client
+    .channel('quarter-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'quarter_data' }, callback)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'available_quarters' }, callback)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'current_quarter' }, callback)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, callback)
+    .subscribe();
+};
+
 // SKU数据相关操作
 export const fetchStores = async (): Promise<StoreCompany[]> => {
   const client = getSupabaseClient();

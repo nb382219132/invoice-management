@@ -2,7 +2,9 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# 店铺发票管理 - InvoiceFlow 税务管理系统
+
+这是一个用于管理店铺发票的税务管理系统，包含发票管理、供应商管理、店铺管理等功能。
 
 This contains everything you need to run your app locally.
 

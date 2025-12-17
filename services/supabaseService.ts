@@ -554,7 +554,7 @@ export const migrateDataFromLocalStorage = async (force: boolean = false): Promi
     // 避免空数据覆盖Supabase中的现有数据
     if (!storesJson && !suppliersJson && !invoicesJson && !paymentsJson) {
       console.log('localStorage中没有数据，跳过迁移');
-      return true;
+      return false; // 返回false，表示需要使用默认数据
     }
     
     // 解析数据

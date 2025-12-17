@@ -3,37 +3,53 @@ import { StoreCompany, SupplierEntity, InvoiceRecord, PaymentRecord } from '../t
 
 // 创建Supabase客户端
 let supabase: SupabaseClient;
+let supabaseConnectionError: Error | null = null;
 
 const getSupabaseClient = (): SupabaseClient => {
+  if (supabaseConnectionError) {
+    console.error('Supabase client creation failed previously, reusing error:', supabaseConnectionError);
+    throw supabaseConnectionError;
+  }
+  
   if (!supabase) {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase URL or Anon Key is missing from environment variables');
+      const error = new Error('Supabase URL or Anon Key is missing from environment variables');
+      supabaseConnectionError = error;
+      throw error;
     }
     
     console.log('Creating Supabase client with URL:', supabaseUrl);
     
-    // 创建Supabase客户端，并配置连接池和超时
-    supabase = createClient(supabaseUrl, supabaseKey, {
-      db: {
-        pool: 5, // 连接池大小
-        timeout: 10000, // 连接超时时间（毫秒）
-      },
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
-    
-    // 检查连接状态
-    supabase.auth.getSession().then(session => {
-      console.log('Supabase connection status:', session.error ? 'error' : 'connected');
-      if (session.error) {
-        console.error('Supabase connection error:', session.error);
-      }
-    });
+    try {
+      // 创建Supabase客户端，并配置连接池和超时
+      supabase = createClient(supabaseUrl, supabaseKey, {
+        db: {
+          pool: 5, // 连接池大小
+          timeout: 10000, // 连接超时时间（毫秒）
+        },
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      });
+      
+      // 检查连接状态
+      supabase.auth.getSession().then(session => {
+        console.log('Supabase connection status:', session.error ? 'error' : 'connected');
+        if (session.error) {
+          console.error('Supabase connection error:', session.error);
+          // 保存连接错误，以便后续调用时直接返回
+          supabaseConnectionError = session.error;
+        }
+      });
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error);
+      supabaseConnectionError = error instanceof Error ? error : new Error('Unknown error creating Supabase client');
+      throw supabaseConnectionError;
+    }
   }
   return supabase;
 };

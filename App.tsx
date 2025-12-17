@@ -175,15 +175,58 @@ function App() {
       console.log('开始加载数据...');
       
       // 策略：
-      // 1. 优先从Supabase加载数据，确保多用户实时同步
-      // 2. 只有当Supabase确实没有数据时，才使用localStorage或默认数据
-      // 3. 避免因为Supabase查询错误导致数据回退
+      // 1. 先从localStorage加载数据，立即显示给用户，提高加载速度
+      // 2. 异步从Supabase加载数据，更新本地状态和localStorage
+      // 3. 简化逻辑，减少不必要的网络请求
       
-      let dataLoadedFromSupabase = false;
+      // 1. 立即从localStorage加载数据，快速显示给用户
+      let localStores = MOCK_STORES;
+      let localSuppliers = MOCK_SUPPLIERS;
+      let localInvoices = MOCK_INVOICES;
+      let localPayments = MOCK_PAYMENTS;
+      let localQuarterData = {};
+      let localAvailableQuarters = ['2025Q3'];
+      let localCurrentQuarter = '2025Q3';
+      let localFactoryOwners = [...new Set(MOCK_SUPPLIERS.map(s => s.owner))];
       
-      // 1. 首先尝试从Supabase加载数据（核心数据）
-      console.log('1. 优先从Supabase加载数据...');
       try {
+        const storesJson = localStorage.getItem('stores');
+        const suppliersJson = localStorage.getItem('suppliers');
+        const invoicesJson = localStorage.getItem('invoices');
+        const paymentsJson = localStorage.getItem('payments');
+        const quarterDataJson = localStorage.getItem('quarterData');
+        const availableQuartersJson = localStorage.getItem('availableQuarters');
+        const currentQuarter = localStorage.getItem('currentQuarter');
+        const factoryOwnersJson = localStorage.getItem('factoryOwners');
+        
+        if (storesJson || suppliersJson || invoicesJson || paymentsJson) {
+          localStores = storesJson ? JSON.parse(storesJson) : MOCK_STORES;
+          localSuppliers = suppliersJson ? JSON.parse(suppliersJson) : MOCK_SUPPLIERS;
+          localInvoices = invoicesJson ? JSON.parse(invoicesJson) : MOCK_INVOICES;
+          localPayments = paymentsJson ? JSON.parse(paymentsJson) : MOCK_PAYMENTS;
+          localQuarterData = quarterDataJson ? JSON.parse(quarterDataJson) : {};
+          localAvailableQuarters = availableQuartersJson ? JSON.parse(availableQuartersJson) : ['2025Q3'];
+          localCurrentQuarter = currentQuarter || '2025Q3';
+          localFactoryOwners = factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [...new Set(localSuppliers.map(s => s.owner))];
+        }
+      } catch (localStorageError) {
+        console.error('从localStorage加载数据失败:', localStorageError);
+      }
+      
+      // 立即更新状态，显示localStorage的数据，提高加载速度
+      setStores(localStores);
+      setSuppliers(localSuppliers);
+      setInvoices(localInvoices);
+      setPayments(localPayments);
+      setQuarterData(localQuarterData);
+      setAvailableQuarters(localAvailableQuarters);
+      setCurrentQuarter(localCurrentQuarter);
+      setFactoryOwners(localFactoryOwners);
+      
+      // 2. 异步从Supabase加载数据，更新本地状态
+      console.log('从Supabase加载数据...');
+      try {
+        // 只加载核心数据，减少网络请求
         const [
           supabaseStores,
           supabaseSuppliers,
@@ -202,37 +245,36 @@ function App() {
         console.log('supabaseInvoices:', supabaseInvoices.length, 'records');
         console.log('supabasePayments:', supabasePayments.length, 'records');
         
-        // 加载季度相关数据
-        const [
-          supabaseQuarterData,
-          supabaseAvailableQuarters,
-          supabaseCurrentQuarter,
-          supabaseFactoryOwners
-        ] = await Promise.all([
-          fetchQuarterData(),
-          fetchAvailableQuarters(),
-          fetchCurrentQuarter(),
-          fetchFactoryOwners()
-        ]);
-        
-        console.log('从Supabase加载季度数据完成！');
-        
         // 检查是否从Supabase获取到了实际数据
         const hasSupabaseData = supabaseStores.length > 0 || supabaseSuppliers.length > 0 || supabaseInvoices.length > 0 || supabasePayments.length > 0;
         
         if (hasSupabaseData) {
-          console.log('2. Supabase有数据，更新本地状态和localStorage...');
-          // Supabase有数据，更新本地状态和localStorage
+          console.log('Supabase有数据，更新本地状态和localStorage...');
+          // 更新本地状态
           setStores(supabaseStores);
           setSuppliers(supabaseSuppliers);
           setInvoices(supabaseInvoices);
           setPayments(supabasePayments);
+          
+          // 异步加载季度相关数据
+          const [
+            supabaseQuarterData,
+            supabaseAvailableQuarters,
+            supabaseCurrentQuarter,
+            supabaseFactoryOwners
+          ] = await Promise.all([
+            fetchQuarterData(),
+            fetchAvailableQuarters(),
+            fetchCurrentQuarter(),
+            fetchFactoryOwners()
+          ]);
+          
           setQuarterData(supabaseQuarterData);
           setAvailableQuarters(supabaseAvailableQuarters);
           setCurrentQuarter(supabaseCurrentQuarter);
           setFactoryOwners(supabaseFactoryOwners);
           
-          // 更新localStorage作为备份
+          // 更新localStorage
           try {
             localStorage.setItem('stores', JSON.stringify(supabaseStores));
             localStorage.setItem('suppliers', JSON.stringify(supabaseSuppliers));
@@ -246,195 +288,20 @@ function App() {
           } catch (localError) {
             console.error('保存到localStorage失败:', localError);
           }
-          
-          dataLoadedFromSupabase = true;
         } else {
-          console.log('2. Supabase核心表都为空，检查localStorage...');
-          
-          // Supabase没有数据，检查localStorage
-          let hasLocalData = false;
-          let localStores = MOCK_STORES;
-          let localSuppliers = MOCK_SUPPLIERS;
-          let localInvoices = MOCK_INVOICES;
-          let localPayments = MOCK_PAYMENTS;
-          let localQuarterData = {};
-          let localAvailableQuarters = ['2025Q3'];
-          let localCurrentQuarter = '2025Q3';
-          let localFactoryOwners = [...new Set(MOCK_SUPPLIERS.map(s => s.owner))];
-          
+          console.log('Supabase没有数据，将localStorage数据保存到Supabase...');
+          // Supabase没有数据，将localStorage数据保存到Supabase
           try {
-            const storesJson = localStorage.getItem('stores');
-            const suppliersJson = localStorage.getItem('suppliers');
-            const invoicesJson = localStorage.getItem('invoices');
-            const paymentsJson = localStorage.getItem('payments');
-            const quarterDataJson = localStorage.getItem('quarterData');
-            const availableQuartersJson = localStorage.getItem('availableQuarters');
-            const currentQuarter = localStorage.getItem('currentQuarter');
-            const factoryOwnersJson = localStorage.getItem('factoryOwners');
-            
-            if (storesJson || suppliersJson || invoicesJson || paymentsJson) {
-              hasLocalData = true;
-              localStores = storesJson ? JSON.parse(storesJson) : MOCK_STORES;
-              localSuppliers = suppliersJson ? JSON.parse(suppliersJson) : MOCK_SUPPLIERS;
-              localInvoices = invoicesJson ? JSON.parse(invoicesJson) : MOCK_INVOICES;
-              localPayments = paymentsJson ? JSON.parse(paymentsJson) : MOCK_PAYMENTS;
-              localQuarterData = quarterDataJson ? JSON.parse(quarterDataJson) : {};
-              localAvailableQuarters = availableQuartersJson ? JSON.parse(availableQuartersJson) : ['2025Q3'];
-              localCurrentQuarter = currentQuarter || '2025Q3';
-              localFactoryOwners = factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [...new Set(localSuppliers.map(s => s.owner))];
-              
-              console.log('从localStorage加载数据成功！');
-              console.log('localStores:', localStores.length, 'records');
-              console.log('localSuppliers:', localSuppliers.length, 'records');
-              console.log('localInvoices:', localInvoices.length, 'records');
-              console.log('localPayments:', localPayments.length, 'records');
-              
-              // 更新本地状态
-              setStores(localStores);
-              setSuppliers(localSuppliers);
-              setInvoices(localInvoices);
-              setPayments(localPayments);
-              setQuarterData(localQuarterData);
-              setAvailableQuarters(localAvailableQuarters);
-              setCurrentQuarter(localCurrentQuarter);
-              setFactoryOwners(localFactoryOwners);
-              
-              // 将localStorage数据保存到Supabase
-              try {
-                await saveAllData();
-                console.log('localStorage数据保存到Supabase成功！');
-              } catch (saveError) {
-                console.error('保存到Supabase失败:', saveError);
-              }
-            } else {
-              console.log('localStorage中没有数据，使用默认数据...');
-              // 使用默认数据
-              setStores(MOCK_STORES);
-              setSuppliers(MOCK_SUPPLIERS);
-              setInvoices(MOCK_INVOICES);
-              setPayments(MOCK_PAYMENTS);
-              setQuarterData({});
-              setAvailableQuarters(['2025Q3']);
-              setCurrentQuarter('2025Q3');
-              setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
-              
-              // 保存默认数据到Supabase
-              try {
-                await saveAllDataWithDefaults();
-                console.log('默认数据保存到Supabase成功！');
-              } catch (saveError) {
-                console.error('保存默认数据到Supabase失败:', saveError);
-              }
-              
-              // 保存到localStorage
-              try {
-                localStorage.setItem('stores', JSON.stringify(MOCK_STORES));
-                localStorage.setItem('suppliers', JSON.stringify(MOCK_SUPPLIERS));
-                localStorage.setItem('invoices', JSON.stringify(MOCK_INVOICES));
-                localStorage.setItem('payments', JSON.stringify(MOCK_PAYMENTS));
-                localStorage.setItem('quarterData', JSON.stringify({}));
-                localStorage.setItem('availableQuarters', JSON.stringify(['2025Q3']));
-                localStorage.setItem('currentQuarter', '2025Q3');
-                localStorage.setItem('factoryOwners', JSON.stringify([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]));
-                console.log('默认数据保存到localStorage成功！');
-              } catch (localError) {
-                console.error('保存默认数据到localStorage失败:', localError);
-              }
-            }
-          } catch (localStorageError) {
-            console.error('从localStorage加载数据失败:', localStorageError);
-            console.log('使用默认数据...');
-            // 使用默认数据
-            setStores(MOCK_STORES);
-            setSuppliers(MOCK_SUPPLIERS);
-            setInvoices(MOCK_INVOICES);
-            setPayments(MOCK_PAYMENTS);
-            setQuarterData({});
-            setAvailableQuarters(['2025Q3']);
-            setCurrentQuarter('2025Q3');
-            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
-            
-            // 保存默认数据到Supabase
-            try {
-              await saveAllDataWithDefaults();
-              console.log('默认数据保存到Supabase成功！');
-            } catch (saveError) {
-              console.error('保存默认数据到Supabase失败:', saveError);
-            }
+            await saveAllData();
+            console.log('localStorage数据保存到Supabase成功！');
+          } catch (saveError) {
+            console.error('保存到Supabase失败:', saveError);
           }
         }
       } catch (supabaseError) {
         console.error('从Supabase加载数据失败:', supabaseError);
-        console.log('3. Supabase查询错误，尝试从localStorage加载数据...');
-        
-        // Supabase查询错误，尝试从localStorage加载数据
-        let hasLocalData = false;
-        let localStores = MOCK_STORES;
-        let localSuppliers = MOCK_SUPPLIERS;
-        let localInvoices = MOCK_INVOICES;
-        let localPayments = MOCK_PAYMENTS;
-        let localQuarterData = {};
-        let localAvailableQuarters = ['2025Q3'];
-        let localCurrentQuarter = '2025Q3';
-        let localFactoryOwners = [...new Set(MOCK_SUPPLIERS.map(s => s.owner))];
-        
-        try {
-          const storesJson = localStorage.getItem('stores');
-          const suppliersJson = localStorage.getItem('suppliers');
-          const invoicesJson = localStorage.getItem('invoices');
-          const paymentsJson = localStorage.getItem('payments');
-          const quarterDataJson = localStorage.getItem('quarterData');
-          const availableQuartersJson = localStorage.getItem('availableQuarters');
-          const currentQuarter = localStorage.getItem('currentQuarter');
-          const factoryOwnersJson = localStorage.getItem('factoryOwners');
-          
-          if (storesJson || suppliersJson || invoicesJson || paymentsJson) {
-            hasLocalData = true;
-            localStores = storesJson ? JSON.parse(storesJson) : MOCK_STORES;
-            localSuppliers = suppliersJson ? JSON.parse(suppliersJson) : MOCK_SUPPLIERS;
-            localInvoices = invoicesJson ? JSON.parse(invoicesJson) : MOCK_INVOICES;
-            localPayments = paymentsJson ? JSON.parse(paymentsJson) : MOCK_PAYMENTS;
-            localQuarterData = quarterDataJson ? JSON.parse(quarterDataJson) : {};
-            localAvailableQuarters = availableQuartersJson ? JSON.parse(availableQuartersJson) : ['2025Q3'];
-            localCurrentQuarter = currentQuarter || '2025Q3';
-            localFactoryOwners = factoryOwnersJson ? JSON.parse(factoryOwnersJson) : [...new Set(localSuppliers.map(s => s.owner))];
-            
-            console.log('从localStorage加载数据成功！');
-            
-            // 更新本地状态
-            setStores(localStores);
-            setSuppliers(localSuppliers);
-            setInvoices(localInvoices);
-            setPayments(localPayments);
-            setQuarterData(localQuarterData);
-            setAvailableQuarters(localAvailableQuarters);
-            setCurrentQuarter(localCurrentQuarter);
-            setFactoryOwners(localFactoryOwners);
-          } else {
-            console.log('localStorage中没有数据，使用默认数据...');
-            // 使用默认数据
-            setStores(MOCK_STORES);
-            setSuppliers(MOCK_SUPPLIERS);
-            setInvoices(MOCK_INVOICES);
-            setPayments(MOCK_PAYMENTS);
-            setQuarterData({});
-            setAvailableQuarters(['2025Q3']);
-            setCurrentQuarter('2025Q3');
-            setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
-          }
-        } catch (localStorageError) {
-          console.error('从localStorage加载数据失败:', localStorageError);
-          console.log('使用默认数据...');
-          // 使用默认数据
-          setStores(MOCK_STORES);
-          setSuppliers(MOCK_SUPPLIERS);
-          setInvoices(MOCK_INVOICES);
-          setPayments(MOCK_PAYMENTS);
-          setQuarterData({});
-          setAvailableQuarters(['2025Q3']);
-          setCurrentQuarter('2025Q3');
-          setFactoryOwners([...new Set(MOCK_SUPPLIERS.map(s => s.owner))]);
-        }
+        console.log('继续使用localStorage数据...');
+        // 继续使用localStorage数据，不回退到默认数据
       }
     } catch (error) {
       console.error('加载数据失败:', error);

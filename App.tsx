@@ -807,17 +807,21 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
+  // 从备份文件恢复数据
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const backupData = JSON.parse(e.target?.result as string);
         
         if (backupData.version && backupData.data) {
           if (confirm(`确认恢复备份数据？\n\n备份时间：${backupData.timestamp}\n备份包含：所有季度数据\n\n注意：这将覆盖当前所有数据，包括所有季度的历史数据！`)) {
+            setIsLoading(true);
+            console.log('开始从备份文件恢复数据...');
+            
             // 1. 保存备份时的季度
             const backupQuarter = backupData.quarter || currentQuarter;
             
@@ -825,32 +829,67 @@ function App() {
             const backupQuarterData = backupData.data.quarterData || {};
             
             // 3. 恢复所有基础数据（包含所有季度的完整数据）
+            const restoredStores = backupData.data.stores || [];
+            const restoredSuppliers = backupData.data.suppliers || [];
+            const restoredInvoices = backupData.data.invoices || [];
+            const restoredPayments = backupData.data.payments || [];
+            const restoredAvailableQuarters = backupData.data.availableQuarters || [];
+            const restoredFactoryOwners = backupData.data.factoryOwners || Array.from(new Set(restoredSuppliers.map((s: any) => s.owner as string)));
+            
+            // 4. 更新本地状态
             setQuarterData(backupQuarterData);
-            setAvailableQuarters(backupData.data.availableQuarters || []);
-            setStores(backupData.data.stores || []);
-            setSuppliers(backupData.data.suppliers || []);
-            setInvoices(backupData.data.invoices || []);
-            setPayments(backupData.data.payments || []);
-            
-            // 4. 恢复工厂所有者列表
-            if (backupData.data.factoryOwners) {
-              setFactoryOwners(backupData.data.factoryOwners);
-            } else {
-              // 如果备份数据中没有factoryOwners，从suppliers中提取唯一的owner
-            const uniqueOwners = Array.from(new Set(backupData.data.suppliers?.map((s: any) => s.owner as string) || [])) as string[];
-            setFactoryOwners(uniqueOwners);
-            }
-            
-            // 5. 切换到备份时的季度
+            setAvailableQuarters(restoredAvailableQuarters);
+            setStores(restoredStores);
+            setSuppliers(restoredSuppliers);
+            setInvoices(restoredInvoices);
+            setPayments(restoredPayments);
+            setFactoryOwners(restoredFactoryOwners);
             setCurrentQuarter(backupQuarter);
             
-            // 6. 显示成功提示
-            alert('数据恢复成功！');
+            // 5. 保存到localStorage作为备份
+            try {
+              localStorage.setItem('stores', JSON.stringify(restoredStores));
+              localStorage.setItem('suppliers', JSON.stringify(restoredSuppliers));
+              localStorage.setItem('invoices', JSON.stringify(restoredInvoices));
+              localStorage.setItem('payments', JSON.stringify(restoredPayments));
+              localStorage.setItem('quarterData', JSON.stringify(backupQuarterData));
+              localStorage.setItem('availableQuarters', JSON.stringify(restoredAvailableQuarters));
+              localStorage.setItem('currentQuarter', backupQuarter);
+              localStorage.setItem('factoryOwners', JSON.stringify(restoredFactoryOwners));
+              console.log('恢复的数据保存到localStorage成功！');
+            } catch (localError) {
+              console.error('保存到localStorage失败:', localError);
+            }
+            
+            // 6. 保存到Supabase
+            try {
+              console.log('开始将恢复的数据保存到Supabase...');
+              await Promise.all([
+                saveStores(restoredStores),
+                saveSuppliers(restoredSuppliers),
+                saveInvoices(restoredInvoices),
+                savePayments(restoredPayments),
+                saveQuarterData(backupQuarterData),
+                saveAvailableQuarters(restoredAvailableQuarters),
+                saveCurrentQuarter(backupQuarter),
+                saveFactoryOwners(restoredFactoryOwners)
+              ]);
+              console.log('恢复的数据保存到Supabase成功！');
+              
+              // 7. 显示成功提示
+              alert('数据恢复成功！');
+            } catch (supabaseError) {
+              console.error('保存到Supabase失败:', supabaseError);
+              alert('数据恢复成功，但保存到Supabase失败！请检查网络连接或Supabase配置。');
+            } finally {
+              setIsLoading(false);
+            }
           }
         } else {
           alert('无效的备份文件格式！');
         }
       } catch (error) {
+        console.error('备份文件解析失败:', error);
         alert('备份文件解析失败，请检查文件格式！');
       }
     };

@@ -22,7 +22,8 @@ import {
   subscribeToSuppliers,
   subscribeToInvoices,
   subscribeToPayments,
-  subscribeToQuarterData
+  subscribeToQuarterData,
+  subscribeToFactoryOwners
 } from './services/supabaseService';
 import { 
   LayoutDashboard, 
@@ -247,25 +248,25 @@ function App() {
     // 订阅payments变化
     const paymentsSubscription = subscribeToPayments(setPayments);
     
+    // 订阅factoryOwners变化
+    const factoryOwnersSubscription = subscribeToFactoryOwners(setFactoryOwners);
+    
     // 订阅季度相关数据变化
     const quarterSubscription = subscribeToQuarterData(async () => {
       // 当季度相关数据变化时，重新加载所有季度相关数据
       const [
         quarterDataData,
         availableQuartersData,
-        currentQuarterData,
-        factoryOwnersData
+        currentQuarterData
       ] = await Promise.all([
         fetchQuarterData(),
         fetchAvailableQuarters(),
-        fetchCurrentQuarter(),
-        fetchFactoryOwners()
+        fetchCurrentQuarter()
       ]);
       
       setQuarterData(quarterDataData);
       setAvailableQuarters(availableQuartersData);
       setCurrentQuarter(currentQuarterData);
-      setFactoryOwners(factoryOwnersData);
     });
     
     // 组件卸载时取消所有订阅
@@ -274,6 +275,7 @@ function App() {
       suppliersSubscription.unsubscribe();
       invoicesSubscription.unsubscribe();
       paymentsSubscription.unsubscribe();
+      factoryOwnersSubscription.unsubscribe();
       quarterSubscription.unsubscribe();
     };
   }, []);

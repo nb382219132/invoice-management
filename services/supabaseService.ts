@@ -55,6 +55,23 @@ export const subscribeToSuppliers = (callback: (suppliers: SupplierEntity[]) => 
     .subscribe();
 };
 
+// 订阅factory_owners表的变化
+export const subscribeToFactoryOwners = (callback: (factoryOwners: string[]) => void) => {
+  const client = getSupabaseClient();
+  
+  // 首次获取数据
+  fetchFactoryOwners().then(callback);
+  
+  // 订阅变化
+  return client
+    .channel('factory-owners-channel')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'factory_owners' }, async () => {
+      const factoryOwners = await fetchFactoryOwners();
+      callback(factoryOwners);
+    })
+    .subscribe();
+};
+
 // 订阅invoices表的变化
 export const subscribeToInvoices = (callback: (invoices: InvoiceRecord[]) => void) => {
   const client = getSupabaseClient();

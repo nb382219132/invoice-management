@@ -2,39 +2,58 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { StoreCompany, SupplierEntity, InvoiceRecord, PaymentRecord } from '../types';
 
 // 创建Supabase客户端
-let supabase: SupabaseClient;
+let supabase: SupabaseClient | null = null;
+let lastConnectionAttempt: number = 0;
+const RECONNECT_INTERVAL = 60000; // 60秒后重试连接
 
 const getSupabaseClient = (): SupabaseClient => {
-  if (!supabase) {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase URL or Anon Key is missing from environment variables');
-    }
-    
-    console.log('Creating Supabase client with URL:', supabaseUrl);
-    
-    // 创建Supabase客户端，并配置连接池和超时
-    supabase = createClient(supabaseUrl, supabaseKey, {
-      db: {
-        pool: 5, // 连接池大小
-        timeout: 10000, // 连接超时时间（毫秒）
-      },
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-      },
-    });
-    
-    // 检查连接状态
-    supabase.auth.getSession().then(session => {
-      console.log('Supabase connection status:', session.error ? 'error' : 'connected');
-      if (session.error) {
-        console.error('Supabase connection error:', session.error);
-      }
-    });
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase URL or Anon Key is missing from environment variables');
   }
+  
+  // 如果客户端不存在，或者超过了重连间隔，重新创建客户端
+  const now = Date.now();
+  if (!supabase || (now - lastConnectionAttempt > RECONNECT_INTERVAL)) {
+    lastConnectionAttempt = now;
+    console.log('Creating or recreating Supabase client with URL:', supabaseUrl);
+    
+    try {
+      // 创建Supabase客户端，并配置连接池和超时
+      supabase = createClient(supabaseUrl, supabaseKey, {
+        db: {
+          pool: 5, // 连接池大小
+          timeout: 10000, // 连接超时时间（毫秒）
+        },
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      });
+      
+      // 检查连接状态
+      supabase.auth.getSession().then(session => {
+        console.log('Supabase connection status:', session.error ? 'error' : 'connected');
+        if (session.error) {
+          console.error('Supabase connection error:', session.error);
+          // 不要保存连接错误，允许下次重试
+        } else {
+          console.log('Successfully connected to Supabase!');
+        }
+      });
+    } catch (error) {
+      console.error('Failed to create Supabase client:', error);
+      // 允许下次重试
+      throw error;
+    }
+  }
+  
+  if (!supabase) {
+    throw new Error('Failed to create Supabase client');
+  }
+  
   return supabase;
 };
 

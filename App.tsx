@@ -72,7 +72,7 @@ interface ModalBackdropProps {
 
 const ModalBackdrop: React.FC<ModalBackdropProps> = ({ children, title, onClose }) => (
   <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md animate-in fade-in zoom-in duration-200">
       <div className="bg-slate-50 border-b border-slate-100 p-4 flex justify-between items-center">
         <h3 className="font-bold text-lg text-slate-800">{title}</h3>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
@@ -495,41 +495,27 @@ function App() {
             // 1. 保存备份时的季度
             const backupQuarter = backupData.quarter || currentQuarter;
             
-            // 2. 获取备份数据中的季度数据
+            // 2. 恢复所有季度的数据
             const backupQuarterData = backupData.data.quarterData || {};
             
-            // 3. 确定要加载的数据
-            let targetStores = backupData.data.stores || [];
-            let targetSuppliers = backupData.data.suppliers || [];
-            let targetInvoices = backupData.data.invoices || [];
-            let targetPayments = backupData.data.payments || [];
-            
-            // 4. 如果备份数据中有该季度的数据，使用该季度的数据
-            if (backupQuarterData[backupQuarter]) {
-              targetStores = backupQuarterData[backupQuarter].stores || [];
-              targetSuppliers = backupQuarterData[backupQuarter].suppliers || [];
-              targetInvoices = backupQuarterData[backupQuarter].invoices || [];
-              targetPayments = backupQuarterData[backupQuarter].payments || [];
-            }
-            
-            // 5. 直接设置所有数据，包括季度数据和当前季度的数据
+            // 3. 恢复所有基础数据（包含所有季度的完整数据）
             setQuarterData(backupQuarterData);
             setAvailableQuarters(backupData.data.availableQuarters || []);
-            setStores(targetStores);
-            setSuppliers(targetSuppliers);
-            setInvoices(targetInvoices);
-            setPayments(targetPayments);
+            setStores(backupData.data.stores || []);
+            setSuppliers(backupData.data.suppliers || []);
+            setInvoices(backupData.data.invoices || []);
+            setPayments(backupData.data.payments || []);
             
-            // 6. 恢复工厂所有者列表
+            // 4. 恢复工厂所有者列表
             if (backupData.data.factoryOwners) {
               setFactoryOwners(backupData.data.factoryOwners);
             } else {
               // 如果备份数据中没有factoryOwners，从suppliers中提取唯一的owner
-              const uniqueOwners = Array.from(new Set(targetSuppliers.map(s => s.owner)));
-              setFactoryOwners(uniqueOwners);
+            const uniqueOwners = Array.from(new Set(backupData.data.suppliers?.map((s: any) => s.owner as string) || [])) as string[];
+            setFactoryOwners(uniqueOwners);
             }
             
-            // 7. 切换到备份时的季度
+            // 5. 切换到备份时的季度
             setCurrentQuarter(backupQuarter);
             
             // 6. 显示成功提示
@@ -1386,11 +1372,28 @@ function App() {
                          <SearchableSelect
                             options={[
                               { value: EntityType.INDIVIDUAL, label: EntityType.INDIVIDUAL },
+                              { value: EntityType.LARGE_INDIVIDUAL, label: EntityType.LARGE_INDIVIDUAL },
                               { value: EntityType.COMPANY, label: EntityType.COMPANY },
                               { value: EntityType.GENERAL, label: EntityType.GENERAL }
                             ]}
                             value={supplierForm.type}
-                            onChange={val => setSupplierForm({...supplierForm, type: val as EntityType})}
+                            onChange={val => {
+                              const selectedType = val as EntityType;
+                              let defaultLimit = supplierForm.limit;
+                              
+                              // Set default limit based on entity type
+                              if (selectedType === EntityType.LARGE_INDIVIDUAL) {
+                                defaultLimit = 1000000;
+                              } else if (selectedType === EntityType.INDIVIDUAL) {
+                                defaultLimit = 280000;
+                              } else if (selectedType === EntityType.COMPANY) {
+                                defaultLimit = 280000;
+                              } else if (selectedType === EntityType.GENERAL) {
+                                defaultLimit = 280000;
+                              }
+                              
+                              setSupplierForm({...supplierForm, type: selectedType, limit: defaultLimit});
+                            }}
                             placeholder="选择类型"
                          />
                       </div>
@@ -1399,7 +1402,7 @@ function App() {
                           <input 
                             className="w-full p-2 border rounded text-sm" 
                             type="number" 
-                            placeholder="280000" 
+                            placeholder={supplierForm.type === EntityType.LARGE_INDIVIDUAL ? "1000000" : "280000"} 
                             value={supplierForm.limit} 
                             onChange={e => setSupplierForm({...supplierForm, limit: parseFloat(e.target.value)})} 
                           />
@@ -1764,17 +1767,121 @@ function App() {
                   <p className="text-2xl font-bold text-blue-600">¥{(totalQuotaAvailable / 10000).toFixed(2)}万</p>
                   <KpiTooltip title="工厂可用额度排行" items={sortedQuotaData} colorClass="bg-blue-500" />
                </div>
-               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 hover:z-20 transition-all hover:shadow-md">
+               <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 relative group hover:z-20 transition-all hover:shadow-md">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Users size={20}/></div>
-                    <span className="text-gray-500 text-sm font-medium">额度预警</span>
+                    <span className="text-gray-500 text-sm font-medium">预计总应纳税额</span>
                   </div>
                   <p className="text-2xl font-bold text-gray-800">
-                    {suppliers.filter(s => {
-                      const used = getSupplierInvoicedTotal(s.id);
-                      return (used / s.quarterlyLimit) > 0.9;
-                    }).length}
+                    ¥{(stores.reduce((total, store) => {
+                      // 获取店铺相关的发票数据
+                      const storeInvoices = invoices.filter(i => i.storeId === store.id);
+                      const totalInvoiced = storeInvoices.reduce((sum, i) => sum + i.amount, 0);
+                      
+                      // 税率常量
+                      const GENERAL_VAT_RATE = 0.13;
+                      const SMALL_VAT_RATE = 0.01;
+                      const INPUT_VAT_RATE = 0.01;
+                      const SURTAX_RATE_GENERAL = 0.12;
+                      const SURTAX_RATE_SMALL = 0.06;
+                      
+                      let estimatedVat = 0;
+                      let estimatedSurtax = 0;
+                      let estimatedIncomeTax = 0;
+                      let taxProfit = 0;
+                      
+                      if (store.taxType === '一般纳税人') {
+                        // 增值税
+                        const outputVat = (store.quarterIncome / (1 + GENERAL_VAT_RATE)) * GENERAL_VAT_RATE;
+                        const inputVat = (totalInvoiced / (1 + INPUT_VAT_RATE)) * INPUT_VAT_RATE;
+                        estimatedVat = Math.max(0, outputVat - inputVat);
+                        
+                        // 附加税
+                        estimatedSurtax = estimatedVat * SURTAX_RATE_GENERAL;
+                        
+                        // 企业所得税
+                        const exTaxIncome = store.quarterIncome / (1 + GENERAL_VAT_RATE);
+                        const exTaxCosts = store.quarterExpenses;
+                        const exTaxInvoiced = totalInvoiced / (1 + INPUT_VAT_RATE);
+                        taxProfit = exTaxIncome - exTaxCosts - exTaxInvoiced;
+                      } else {
+                        // 小规模纳税人
+                        estimatedVat = (store.quarterIncome / (1 + SMALL_VAT_RATE)) * SMALL_VAT_RATE;
+                        estimatedSurtax = estimatedVat * SURTAX_RATE_SMALL;
+                        taxProfit = store.quarterIncome - store.quarterExpenses - totalInvoiced;
+                      }
+                      
+                      // 企业所得税计算
+                      if (taxProfit > 0) {
+                        if (taxProfit <= 3000000) {
+                          estimatedIncomeTax = taxProfit * 0.05;
+                        } else {
+                          estimatedIncomeTax = taxProfit * 0.25;
+                        }
+                      }
+                      
+                      const totalEstimatedTax = estimatedVat + estimatedSurtax + estimatedIncomeTax;
+                      return total + totalEstimatedTax;
+                    }, 0) / 10000).toFixed(2)}万
                   </p>
+                  <KpiTooltip 
+                    title="各店铺预计应纳税额" 
+                    items={stores.map(store => {
+                      // 获取店铺相关的发票数据
+                      const storeInvoices = invoices.filter(i => i.storeId === store.id);
+                      const totalInvoiced = storeInvoices.reduce((sum, i) => sum + i.amount, 0);
+                      
+                      // 税率常量
+                      const GENERAL_VAT_RATE = 0.13;
+                      const SMALL_VAT_RATE = 0.01;
+                      const INPUT_VAT_RATE = 0.01;
+                      const SURTAX_RATE_GENERAL = 0.12;
+                      const SURTAX_RATE_SMALL = 0.06;
+                      
+                      let estimatedVat = 0;
+                      let estimatedSurtax = 0;
+                      let estimatedIncomeTax = 0;
+                      let taxProfit = 0;
+                      
+                      if (store.taxType === '一般纳税人') {
+                        // 增值税
+                        const outputVat = (store.quarterIncome / (1 + GENERAL_VAT_RATE)) * GENERAL_VAT_RATE;
+                        const inputVat = (totalInvoiced / (1 + INPUT_VAT_RATE)) * INPUT_VAT_RATE;
+                        estimatedVat = Math.max(0, outputVat - inputVat);
+                        
+                        // 附加税
+                        estimatedSurtax = estimatedVat * SURTAX_RATE_GENERAL;
+                        
+                        // 企业所得税
+                        const exTaxIncome = store.quarterIncome / (1 + GENERAL_VAT_RATE);
+                        const exTaxCosts = store.quarterExpenses;
+                        const exTaxInvoiced = totalInvoiced / (1 + INPUT_VAT_RATE);
+                        taxProfit = exTaxIncome - exTaxCosts - exTaxInvoiced;
+                      } else {
+                        // 小规模纳税人
+                        estimatedVat = (store.quarterIncome / (1 + SMALL_VAT_RATE)) * SMALL_VAT_RATE;
+                        estimatedSurtax = estimatedVat * SURTAX_RATE_SMALL;
+                        taxProfit = store.quarterIncome - store.quarterExpenses - totalInvoiced;
+                      }
+                      
+                      // 企业所得税计算
+                      if (taxProfit > 0) {
+                        if (taxProfit <= 3000000) {
+                          estimatedIncomeTax = taxProfit * 0.05;
+                        } else {
+                          estimatedIncomeTax = taxProfit * 0.25;
+                        }
+                      }
+                      
+                      const totalEstimatedTax = estimatedVat + estimatedSurtax + estimatedIncomeTax;
+                      
+                      return {
+                        label: store.storeName,
+                        value: totalEstimatedTax
+                      };
+                    }).filter(item => item.value > 0).sort((a, b) => b.value - a.value)}
+                    colorClass="bg-orange-500" 
+                  />
                </div>
             </div>
 
@@ -2160,7 +2267,10 @@ function App() {
              </div>
 
              {/* Note: We now group by Owner (Factory Name) */}
-             {Object.entries(groupedSuppliersMap).map(([ownerName, groupedSuppliers]) => {
+             {/* 按工厂开票主体数量从高到低排序 */}
+             {Object.entries(groupedSuppliersMap)
+               .sort(([, a], [, b]) => b.length - a.length)
+               .map(([ownerName, groupedSuppliers]) => {
                 
                 // Calculate item data for each supplier in the group
                 const supplierItems: SupplierItemData[] = (groupedSuppliers as SupplierEntity[]).map(supplier => {
@@ -2221,6 +2331,7 @@ function App() {
                   <SupplierRow 
                     key={ownerName}
                     ownerName={ownerName}
+                    supplierCount={groupedSuppliers.length}  // 添加开票主体数量
                     items={supplierItems}
                     paymentDetails={paymentDetails}
                     onAddInvoice={(id) => {

@@ -1,6 +1,7 @@
 export enum EntityType {
   INDIVIDUAL = '个体工商户',
   COMPANY = '小规模纳税人',
+  LARGE_INDIVIDUAL = '大额个体户',
   GENERAL = '一般纳税人'
 }
 

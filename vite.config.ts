@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
-      }
+      },
+      // GitHub Pages配置，使用正确的仓库名称作为base路径
+      base: '/invoice-management/'
     };
 });

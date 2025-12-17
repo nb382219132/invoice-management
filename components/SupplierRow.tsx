@@ -21,6 +21,7 @@ export interface PaymentDetail {
 
 interface Props {
   ownerName: string;
+  supplierCount: number;
   items: SupplierItemData[];
   paymentDetails?: PaymentDetail[];
   onAddInvoice: (supplierId: string) => void;
@@ -30,6 +31,7 @@ interface Props {
 
 const SupplierRow: React.FC<Props> = ({ 
   ownerName, 
+  supplierCount,
   items, 
   paymentDetails, 
   onAddInvoice,

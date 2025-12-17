@@ -153,9 +153,10 @@ const StoreCard: React.FC<Props> = ({
         <div className="flex justify-between items-start mb-4 pr-12">
           <div>
             <h3 className="text-lg font-bold text-gray-800">{store.storeName}</h3>
-            <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-              <Building2 size={14} className="text-gray-400" /> {store.companyName}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded border ml-1 ${store.taxType === '一般纳税人' ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+            <p className="text-sm text-gray-500 flex items-center gap-2 mt-1 whitespace-nowrap">
+              <Building2 size={14} className="text-gray-400 flex-shrink-0" /> 
+              <span className="truncate flex-1">{store.companyName}</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded border ${store.taxType === '一般纳税人' ? 'bg-blue-100 text-blue-600 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'} flex-shrink-0`}>
                   {store.taxType}
               </span>
             </p>

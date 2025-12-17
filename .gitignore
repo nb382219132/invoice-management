@@ -26,3 +26,8 @@ dist-ssr
 # GH Pages deploy directories
 gh-pages-deploy/
 gh-pages-temp/
+
+# Environment variables
+.env
+.env.local
+.env.*.local

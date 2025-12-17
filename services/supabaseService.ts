@@ -206,7 +206,7 @@ export const fetchStores = async (): Promise<StoreCompany[]> => {
   
   if (error) {
     console.error('Error fetching stores:', error);
-    return [];
+    throw error;
   }
   
   return data as StoreCompany[];
@@ -243,7 +243,7 @@ export const fetchSuppliers = async (): Promise<SupplierEntity[]> => {
   
   if (error) {
     console.error('Error fetching suppliers:', error);
-    return [];
+    throw error;
   }
   
   return data as SupplierEntity[];
@@ -280,7 +280,7 @@ export const fetchInvoices = async (): Promise<InvoiceRecord[]> => {
   
   if (error) {
     console.error('Error fetching invoices:', error);
-    return [];
+    throw error;
   }
   
   return data as InvoiceRecord[];
@@ -317,7 +317,7 @@ export const fetchPayments = async (): Promise<PaymentRecord[]> => {
   
   if (error) {
     console.error('Error fetching payments:', error);
-    return [];
+    throw error;
   }
   
   return data as PaymentRecord[];

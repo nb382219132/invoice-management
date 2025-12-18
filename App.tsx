@@ -719,21 +719,72 @@ function App() {
         invoices,
         payments,
         quarterData, // 包含所有历史季度的数据
-        availableQuarters
+        availableQuarters,
+        currentQuarter,
+        factoryOwners
       }
     };
     
     const dataStr = JSON.stringify(backupData, null, 2);
+    
+    // 1. 导出到本地JSON文件
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // 更新文件名，明确表示包含所有季度
     link.download = `系统备份_所有季度_${new Date().toISOString().split('T')[0]}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    
+    // 2. 同时保存到Supabase
+    saveAllDataToSupabase();
+    
+    console.log('数据备份成功！已导出到本地JSON文件，并同步到Supabase。');
+    alert('数据备份成功！已导出到本地JSON文件，并同步到Supabase。');
   };
-
+  
+  // 保存所有数据到Supabase
+  const saveAllDataToSupabase = async () => {
+    try {
+      console.log('开始保存所有数据到Supabase...');
+      
+      // 保存核心数据
+      await Promise.all([
+        saveStores(stores),
+        saveSuppliers(suppliers),
+        saveInvoices(invoices),
+        savePayments(payments),
+        saveFactoryOwners(factoryOwners)
+      ]);
+      
+      // 保存季度数据
+      await Promise.all([
+        saveQuarterData(quarterData),
+        saveAvailableQuarters(availableQuarters),
+        saveCurrentQuarter(currentQuarter)
+      ]);
+      
+      console.log('所有数据保存到Supabase成功！');
+    } catch (error) {
+      console.error('保存数据到Supabase失败:', error);
+      alert('数据已导出到本地，但保存到Supabase失败！请检查网络连接或Supabase配置。');
+    }
+  };
+  
+  // 恢复数据按钮处理函数
+  const handleRestoreData = () => {
+    // 创建一个input元素，类型为file，接受.json文件
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    // 当用户选择文件时，调用handleImportData函数
+    input.onchange = handleImportData;
+    
+    // 触发文件选择对话框
+    input.click();
+  };
+  
   // 从备份文件恢复数据
   const handleImportData = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

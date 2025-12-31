@@ -883,10 +883,9 @@ function App() {
       const start = new Date(now.getFullYear(), quarter * 3, 1);
       const end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
       return {
-          start: \--\,
-          end: \--\
+          start: start.getFullYear() + "-" + (start.getMonth() + 1).toString().padStart(2, "0") + "-" + start.getDate().toString().padStart(2, "0"),
+          end: end.getFullYear() + "-" + (end.getMonth() + 1).toString().padStart(2, "0") + "-" + end.getDate().toString().padStart(2, "0")
       };
-    };
   };
 
   // 判断给定日期属于哪个季度，并返回该季度的日期范围
@@ -896,12 +895,11 @@ function App() {
       const start = new Date(date.getFullYear(), quarter * 3, 1);
       const end = new Date(date.getFullYear(), quarter * 3 + 3, 0);
       return {
-          start: \--\,
-          end: \--\,
+          start: start.getFullYear() + "-" + (start.getMonth() + 1).toString().padStart(2, "0") + "-" + start.getDate().toString().padStart(2, "0"),
+          end: end.getFullYear() + "-" + (end.getMonth() + 1).toString().padStart(2, "0") + "-" + end.getDate().toString().padStart(2, "0"),
           quarter: quarter + 1,
           year: date.getFullYear()
       };
-    };
   };
 
   // 判断给定日期是否为当前季度或下个季度

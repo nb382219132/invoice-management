@@ -883,8 +883,8 @@ function App() {
     const start = new Date(now.getFullYear(), quarter * 3, 1);
     const end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
     return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0]
+        start: start.getFullYear() + '\-' + (start.getMonth() + 1).toString().padStart(2, '0') + '\-' + start.getDate().toString().padStart(2, '0'),
+        end: end.getFullYear() + '\-' + (end.getMonth() + 1).toString().padStart(2, '0') + '\-' + end.getDate().toString().padStart(2, '0')
     };
   };
 
@@ -895,8 +895,8 @@ function App() {
     const start = new Date(date.getFullYear(), quarter * 3, 1);
     const end = new Date(date.getFullYear(), quarter * 3 + 3, 0);
     return {
-        start: start.toISOString().split('T')[0],
-        end: end.toISOString().split('T')[0],
+        start: start.getFullYear() + '\-' + (start.getMonth() + 1).toString().padStart(2, '0') + '\-' + start.getDate().toString().padStart(2, '0'),
+        end: end.getFullYear() + '\-' + (end.getMonth() + 1).toString().padStart(2, '0') + '\-' + end.getDate().toString().padStart(2, '0'),
         quarter: quarter + 1,
         year: date.getFullYear()
     };

@@ -880,26 +880,64 @@ function App() {
 
   const getCurrentQuarterRange = () => {
       const now = new Date();
-      const quarter = Math.floor(now.getMonth() / 3);
-      const start = new Date(now.getFullYear(), quarter * 3, 1);
-      const end = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+      const year = now.getFullYear();
+      const month = now.getMonth(); // 0-11
+      
+      // 计算当前季度
+      let quarter;
+      if (month >= 0 && month <= 2) {
+          quarter = 0; // 第1季度
+      } else if (month >= 3 && month <= 5) {
+          quarter = 1; // 第2季度
+      } else if (month >= 6 && month <= 8) {
+          quarter = 2; // 第3季度
+      } else {
+          quarter = 3; // 第4季度
+      }
+      
+      // 计算季度开始日期
+      const start = new Date(year, quarter * 3, 1);
+      
+      // 计算季度结束日期：下一季度的第0天就是当前季度的最后一天
+      const end = new Date(year, quarter * 3 + 3, 0);
+      
+      // 格式化日期为YYYY-MM-DD格式
+      const formatDate = (date: Date) => {
+          const y = date.getFullYear();
+          const m = (date.getMonth() + 1).toString().padStart(2, "0");
+          const d = date.getDate().toString().padStart(2, "0");
+          return `${y}-${m}-${d}`;
+      };
+      
       return {
-          start: start.getFullYear() + "-" + (start.getMonth() + 1).toString().padStart(2, "0") + "-" + start.getDate().toString().padStart(2, "0"),
-          end: end.getFullYear() + "-" + (end.getMonth() + 1).toString().padStart(2, "0") + "-" + end.getDate().toString().padStart(2, "0")
+          start: formatDate(start),
+          end: formatDate(end)
       };
   };
 
   // 判断给定日期属于哪个季度，并返回该季度的日期范围
   const getQuarterRangeForDate = (dateString: string) => {
       const date = new Date(dateString);
-      const quarter = Math.floor(date.getMonth() / 3);
-      const start = new Date(date.getFullYear(), quarter * 3, 1);
-      const end = new Date(date.getFullYear(), quarter * 3 + 3, 0);
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      const quarter = Math.floor(month / 3);
+      
+      const start = new Date(year, quarter * 3, 1);
+      const end = new Date(year, quarter * 3 + 3, 0);
+      
+      // 格式化日期为YYYY-MM-DD格式
+      const formatDate = (date: Date) => {
+          const y = date.getFullYear();
+          const m = (date.getMonth() + 1).toString().padStart(2, "0");
+          const d = date.getDate().toString().padStart(2, "0");
+          return `${y}-${m}-${d}`;
+      };
+      
       return {
-          start: start.getFullYear() + "-" + (start.getMonth() + 1).toString().padStart(2, "0") + "-" + start.getDate().toString().padStart(2, "0"),
-          end: end.getFullYear() + "-" + (end.getMonth() + 1).toString().padStart(2, "0") + "-" + end.getDate().toString().padStart(2, "0"),
+          start: formatDate(start),
+          end: formatDate(end),
           quarter: quarter + 1,
-          year: date.getFullYear()
+          year: year
       };
   };
 

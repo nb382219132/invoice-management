@@ -47,7 +47,8 @@ import {
   Pencil,
   Shield,
   Calendar,
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { 
@@ -343,7 +344,7 @@ function App() {
   };
   
   // 从备份恢复数据
-  const handleRestoreData = async () => {
+  const handleRestoreDataFromSupabase = async () => {
     if (window.confirm('确定要从备份恢复数据吗？这将覆盖当前所有数据！')) {
       try {
         setIsLoading(true);
